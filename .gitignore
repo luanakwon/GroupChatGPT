@@ -4,3 +4,6 @@ __pycache__
 
 # credentials
 credentials.py
+
+# temporary
+tmp*.py
