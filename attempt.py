@@ -2,6 +2,7 @@ from credentials import TOKEN, OPENAI_API_KEY
 
 import discord
 from llm_client import MyOpenAIClient
+from channel_db import ChannelMemoryDB
 
 import datetime
 import json
@@ -14,8 +15,7 @@ class MyClient(discord.Client):
         super().__init__(intents=intents)
         
         # following 3 dicts can be switched to DB later
-        self.summarized_context = {}
-        self.last_staged = {}
+        self.db = ChannelMemoryDB()
 
         self.hide_flag = "//pss"
 
@@ -46,9 +46,18 @@ class MyClient(discord.Client):
 
         # 1. Handle messages that mention the bot
         if self.user in message.mentions:
-            summary = self.summarized_context.get(c_id, '')
+            db_row = self.db.get_memory(c_id)
+            if db_row is None:
+                timestamp = None
+                summary = ''
+            else:
+                timestamp = datetime.datetime.fromisoformat(db_row[0])
+                summary = db_row[1]
+            
+            # summary = self.summarized_context.get(c_id, '')
             context = await self.get_unstaged_history(
                 channel=channel, 
+                after=timestamp,
                 limit=10
             )
 
@@ -62,17 +71,20 @@ class MyClient(discord.Client):
                 return
 
             await channel.send(llm_answer)
-            self.last_staged[c_id] = datetime.datetime.now(datetime.timezone.utc)
-            self.summarized_context[c_id] = llm_summary
+            self.db.set_memory(c_id,
+                datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                llm_summary)
 
-            print(self.last_staged[c_id])
+            # self.last_staged[c_id] = datetime.datetime.now(datetime.timezone.utc)
+            # self.summarized_context[c_id] = llm_summary
+
+            print(datetime.datetime.now(datetime.timezone.utc).isoformat())
             print(summary, context, llm_answer, llm_summary)
 
             return
 
-    async def get_unstaged_history(self, channel, limit=10):
+    async def get_unstaged_history(self, channel, after=None, limit=10):
         context = []
-        after = self.last_staged.get(channel.id, None)
         async for msg in channel.history(after=after, limit=limit):
             # if message is from self, meaning it is staged
             if msg.author == self.user:
@@ -84,8 +96,6 @@ class MyClient(discord.Client):
                     break
                 else: # after=timestamp -> oldest_first=True
                     # this is the oldest self message
-                    self.last_staged[channel.id] = msg.created_at
-                    self.unstaged_count[channel.id] = 0
                     context = []
                     continue
             # non-text message : skip for now

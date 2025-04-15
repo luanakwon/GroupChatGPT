@@ -7,3 +7,6 @@ credentials.py
 
 # temporary
 tmp*.py
+
+# database
+*.db
