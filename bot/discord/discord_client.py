@@ -1,6 +1,6 @@
-from bot.config.credentials import OPENAI_API_KEY
-
 import discord
+
+from bot.config.credentials import OPENAI_API_KEY
 from bot.llm.llm_client import MyOpenAIClient
 from bot.db.channel_db import ChannelMemoryDB
 
