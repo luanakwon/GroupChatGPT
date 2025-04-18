@@ -1,4 +1,4 @@
-from credentials import TOKEN, OPENAI_API_KEY
+from credentials import DISCORD_TOKEN, OPENAI_API_KEY
 
 import discord
 from llm_client import MyOpenAIClient
@@ -147,4 +147,4 @@ class MyClient(discord.Client):
 
 if __name__ == "__main__":
     client = MyClient()
-    client.run(TOKEN)
+    client.run(DISCORD_TOKEN)
