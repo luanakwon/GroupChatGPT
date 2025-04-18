@@ -145,6 +145,18 @@ class MyClient(discord.Client):
         return json.dumps(compressed)
 
 
+# remove deprecated "heychat" command
+# once removed, delete this code
+from discord import app_commands
+
+
+
 if __name__ == "__main__":
     client = MyClient()
     client.run(DISCORD_TOKEN)
+
+    # remove deprecated "heychat" command
+    # once removed, delete this code
+    client.tree = app_commands.CommandTree(client)
+    client.tree.remove_command("heychat")
+    client.tree.sync()
