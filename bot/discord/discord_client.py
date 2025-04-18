@@ -1,13 +1,13 @@
-from credentials import DISCORD_TOKEN, OPENAI_API_KEY
+from bot.config.credentials import OPENAI_API_KEY
 
 import discord
-from llm_client import MyOpenAIClient
-from channel_db import ChannelMemoryDB
+from bot.llm.llm_client import MyOpenAIClient
+from bot.db.channel_db import ChannelMemoryDB
 
 import datetime
 import json
 
-class MyClient(discord.Client):
+class MyDiscordClient(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True  # Needed to access message.content
@@ -143,20 +143,3 @@ class MyClient(discord.Client):
             compressed.append(m1)
 
         return json.dumps(compressed)
-
-
-# remove deprecated "heychat" command
-# once removed, delete this code
-from discord import app_commands
-
-
-
-if __name__ == "__main__":
-    client = MyClient()
-    client.run(DISCORD_TOKEN)
-
-    # remove deprecated "heychat" command
-    # once removed, delete this code
-    client.tree = app_commands.CommandTree(client)
-    client.tree.remove_command("heychat")
-    client.tree.sync()
