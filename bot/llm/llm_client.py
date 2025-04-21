@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import openai
 from openai import OpenAI
 
@@ -39,13 +42,13 @@ Always respond with a valid JSON object using double quotes. Do not add any comm
             openai.NotFoundError,
             openai.APIConnectionError,
             openai.InternalServerError) as e:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
             raise ConnectionError from e
         except openai.UnprocessableEntityError as e:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
             raise ValueError(e)
         except openai.RateLimitError as e:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
             raise InterruptedError(e)
 
         try:

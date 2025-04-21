@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import discord
 
 from bot.config.credentials import OPENAI_API_KEY
@@ -28,7 +31,7 @@ class MyDiscordClient(discord.Client):
         ]
         
     async def on_ready(self):
-        print(f"Logged in as {self.user} (ID: {self.user.id})")
+        logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         # self.member_dict = {}
         # for guild in self.guilds:
         #     async for member in guild.fetch_members(limit=None):  # fetch all
@@ -101,8 +104,9 @@ class MyDiscordClient(discord.Client):
                 llm_answer, llm_summary = self.llm.query_LLM(
                     summary = summary,
                     query=context)
+
             except Exception as e:
-                print(f"ERROR: {e}")
+                logger.error(f"ERROR: {e}")
                 await channel.send(self.reserved_error_message[0])
                 return
 
@@ -114,8 +118,7 @@ class MyDiscordClient(discord.Client):
             # self.last_staged[c_id] = datetime.datetime.now(datetime.timezone.utc)
             # self.summarized_context[c_id] = llm_summary
 
-            print(datetime.datetime.now(datetime.timezone.utc).isoformat())
-            print(summary, context, llm_answer, llm_summary)
+            logger.debug(llm_answer)
 
             return
 
@@ -123,8 +126,6 @@ class MyDiscordClient(discord.Client):
         context = []
         msg: discord.Message
         async for msg in channel.history(after=after, limit=limit):
-            print(msg.content)
-            print(context)
             # if message is from self, meaning it is staged
             if msg.author == self.user:
                 # regard error message as regular message
@@ -152,7 +153,7 @@ class MyDiscordClient(discord.Client):
                     
                     content = f"(in reply to {replied_author}: \"{replied_content}\")\n{content}"
                 except Exception as e:
-                    print(f"Failed to fetch replied message: {e}")
+                    logger.error(f"Failed to fetch replied message: {e}")
                     content = f"(in reply to someone: \"\")\n{content}"
                         
             formatted_message = {
@@ -169,7 +170,9 @@ class MyDiscordClient(discord.Client):
         # retry without after?
         # I still have no idea how this happened, and I could not reproduce this error.
         if len(context) == 0:
-            print(after)
+            logger.error("0 context error")
+            logger.error(after)
+            logger.error(context)
             if after is None:
                 assert(len(context) > 0)
             else:

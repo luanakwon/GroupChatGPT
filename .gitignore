@@ -11,4 +11,5 @@ tmp*.py
 
 # database
 *.db
+app.log
 

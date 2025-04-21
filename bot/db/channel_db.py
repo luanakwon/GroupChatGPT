@@ -1,5 +1,7 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import sqlite3
-from datetime import datetime
 
 class ChannelMemoryDB:
     def __init__(self, db_path='channel_memory.db'):
@@ -17,6 +19,7 @@ class ChannelMemoryDB:
                 )
             """)
             con.commit()
+        logger.info('DB initialized')
 
     def get_memory(self,channel_id:int):
         with sqlite3.connect(self.db_path) as con:
