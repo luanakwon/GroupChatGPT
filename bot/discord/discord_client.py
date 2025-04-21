@@ -6,6 +6,7 @@ from bot.db.channel_db import ChannelMemoryDB
 
 import datetime
 import json
+import re
 
 class MyDiscordClient(discord.Client):
     def __init__(self):
@@ -28,10 +29,10 @@ class MyDiscordClient(discord.Client):
         
     async def on_ready(self):
         print(f"Logged in as {self.user} (ID: {self.user.id})")
-        self.member_dict = {}
-        for guild in self.guilds:
-            async for member in guild.fetch_members(limit=None):  # fetch all
-                self.member_dict[member.id] = member.display_name
+        # self.member_dict = {}
+        # for guild in self.guilds:
+        #     async for member in guild.fetch_members(limit=None):  # fetch all
+        #         self.member_dict[member.id] = member.display_name
 
         self.llm.set_username(str(self.user))
         
@@ -40,6 +41,41 @@ class MyDiscordClient(discord.Client):
         # skip self message
         if message.author == self.user:
             return
+        
+        # print('mentions')
+        # print(message.mentions)
+        # print('role_mentions')
+        # print(message.role_mentions)
+        # print('channel_mentions')
+        # print(message.channel_mentions)
+        # print('attachments')
+        # print(message.attachments)
+        # print('embeds')
+        # print(message.embeds)
+        # if len(message.embeds) > 0:
+        #     print(message.embeds[0].url)
+        #     print(message.embeds[0].description)
+        # print('reactions')
+        # print(message.reactions)
+        # print('nonce')
+        # print(message.nonce)
+        # print('pinned')
+        # print(message.pinned)
+        # print('type')
+        # print(message.type)
+        # print('flags')
+        # print(message.flags)
+        # print('reference')
+        # print(message.reference)
+        # print('thread')
+        # print(message.thread)
+        # print('components')
+        # print(message.components)
+        # print('stickers')
+        # print(message.stickers)
+        # print(message.content)
+
+        # return
 
         channel = message.channel
         c_id = channel.id
@@ -85,6 +121,7 @@ class MyDiscordClient(discord.Client):
 
     async def get_unstaged_history(self, channel, after=None, limit=10):
         context = []
+        msg: discord.Message
         async for msg in channel.history(after=after, limit=limit):
             # if message is from self, meaning it is staged
             if msg.author == self.user:
@@ -98,31 +135,24 @@ class MyDiscordClient(discord.Client):
                     # this is the oldest self message
                     context = []
                     continue
-            # non-text message : skip for now
-            if not msg.content:
-                continue
-            # skip hidden message
-            if msg.content.lower().startswith(self.hide_flag):
-                continue 
-            
-            # --- for regular messages ---
 
-            # replace mention_id with mention_name
-            content = str(msg.content)
-            s0 = 0
-            while s0 < len(content):
-                # later switch to regex parsing r"<@!?(?P<id>\d+)>"
-                i0 = content.find('<@',s0)
-                if i0 >= 0:
-                    i1 = content.find('>',i0)
-                    if i1 > i0:
-                        mem_id = int(content[i0+2:i1])
-                        mem_name = self.member_dict.get(mem_id,mem_id)
-                        content = content[:i0]+f"**@{mem_name}**"+content[i1+1:]
-                        s0 = i1+1
-                        continue
-                break
-            
+            # process message (nontext, hidden, mention, reply)
+            content = convert_nontext2str(msg)
+            content = omit_hidden_message(content,self.hide_flag)
+            content = replace_mention_id2name(content,msg)
+            if msg.type == discord.MessageType.reply and msg.reference:
+              try:
+                  replied_message = await msg.channel.fetch_message(msg.reference.message_id)
+                  replied_author = f"**@{replied_message.author.display_name}**" if replied_message.author else "someone"
+                  replied_content = convert_nontext2str(replied_message)
+                  replied_content = omit_hidden_message(replied_content, self.hide_flag)
+                  replied_content = replace_mention_id2name(replied_content, replied_message)
+                
+                  content = f"(in reply to {replied_author}: \"{replied_content}\")\n{content}"
+              except Exception as e:
+                  print(f"Failed to fetch replied message: {e}")
+                  content = f"(in reply to someone: \"\")\n{content}"
+                        
             formatted_message = {
                 'metadata':[str(msg.author),msg.created_at.strftime('%y%m%d %H:%M %Z')],
                 'content':[str(content)]}
@@ -143,3 +173,83 @@ class MyDiscordClient(discord.Client):
             compressed.append(m1)
 
         return json.dumps(compressed)
+
+
+# --- message handling functions ---
+
+def convert_nontext2str(message:discord.Message)->str:
+    # TODO proper implement later
+    # also strip content from here
+    parts = []
+
+    # 1. Stickers
+    if message.stickers:
+        for sticker in message.stickers:
+            parts.append(f"[sticker: {sticker.name}]")
+
+    # 2. Attachments
+    if message.attachments:
+        for att in message.attachments:
+            if att.description:
+                parts.append(f"[attachment: {desc}]")
+            else:
+                parts.append("[attachment: unsupported-data]")
+
+    # 3. Embeds (only if not already in content)
+    if message.embeds:
+        for embed in message.embeds:
+            # extract probably useful info
+            label = embed.provider.name if embed.provider else 'embed'
+            title = getattr(embed, 'title', 'null')
+            desc = getattr(embed, 'description', 'null')
+            url = getattr(embed, 'url', 'null')
+            
+
+            # remove if url is already in content
+            if url and message.content:
+                pattern = re.compile(fr"{url}\S*")
+                for substr in pattern.findall(message.content):
+                    message.content = message.content.replace(substr,'')
+
+            parts.append(f"[{label}: title-{title} desc-{desc} url-{url}]")
+
+    # 4. Text content
+    if message.content:
+        parts.append(message.content.strip())
+
+    return "\n".join(parts).strip()
+
+def omit_hidden_message(content:str,flag:str)->str:
+    # omit hidden message
+    flag_idx = content.find(flag)
+    if flag_idx >= 0:
+        content = content[:flag_idx]
+    return content
+
+
+def replace_mention_id2name(content:str, message:discord.Message):
+    replacements = {
+        "@everyone":"**@everyone**",
+        "@here":"**@here**"
+    }
+
+    # Users: <@123> or <@!123>
+    for user in message.mentions:
+        mention_str = f"<@{user.id}>"
+        mention_str_nick = f"<@!{user.id}>"
+        replacements[mention_str] = f"**@{user.display_name}**"
+        replacements[mention_str_nick] = f"**@{user.display_name}**"
+
+    # Channels: <#123>
+    for channel in message.channel_mentions:
+        replacements[f"<#{channel.id}>"] = f"**#{channel.name}**"
+
+    # Roles: <@&123>
+    for role in message.role_mentions:
+        replacements[f"<@&{role.id}>"] = f"**@{role.name}**"
+
+    # Replace all in content
+    for k, v in replacements.items():
+        content = content.replace(k, v)
+
+    return content
