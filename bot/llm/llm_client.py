@@ -14,7 +14,8 @@ class MyOpenAIClient(OpenAI):
         self._system_message_content = \
             f"""You, {self._username}, are a helpful and concise member of a Discord server. 
 You will be provided a summary of the previous context, followed by recent messages after the summarized context. 
-The last message mentions you. Please reply to the mention and also update the summary to reflect all messages up to your reply.
+The last message mentions you. Please reply to the mention and also re-write the summary to include the old summary, given messages, and your reply.
+You must include include every context you have no matter how irrelevant they are.
 Respond in JSON format like this: {{"answer": "<your_reply>", "summary": "<updated_summary>"}}
 Always respond with a valid JSON object using double quotes. Do not add any commentary outside the JSON."""
 
