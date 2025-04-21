@@ -89,19 +89,19 @@ class MyDiscordClient(discord.Client):
             else:
                 timestamp = datetime.datetime.fromisoformat(db_row[0])
                 summary = db_row[1]
-            
-            # summary = self.summarized_context.get(c_id, '')
-            context = await self.get_unstaged_history(
-                channel=channel, 
-                after=timestamp,
-                limit=10
-            )
 
-            try:
+            try:            
+                # summary = self.summarized_context.get(c_id, '')
+                context = await self.get_unstaged_history(
+                    channel=channel, 
+                    after=timestamp,
+                    limit=10
+                )
+
                 llm_answer, llm_summary = self.llm.query_LLM(
                     summary = summary,
                     query=context)
-            except BaseException as e:
+            except Exception as e:
                 print(f"ERROR: {e}")
                 await channel.send(self.reserved_error_message[0])
                 return
@@ -123,6 +123,8 @@ class MyDiscordClient(discord.Client):
         context = []
         msg: discord.Message
         async for msg in channel.history(after=after, limit=limit):
+            print(msg.content)
+            print(context)
             # if message is from self, meaning it is staged
             if msg.author == self.user:
                 # regard error message as regular message
@@ -141,17 +143,17 @@ class MyDiscordClient(discord.Client):
             content = omit_hidden_message(content,self.hide_flag)
             content = replace_mention_id2name(content,msg)
             if msg.type == discord.MessageType.reply and msg.reference:
-              try:
-                  replied_message = await msg.channel.fetch_message(msg.reference.message_id)
-                  replied_author = f"**@{replied_message.author.display_name}**" if replied_message.author else "someone"
-                  replied_content = convert_nontext2str(replied_message)
-                  replied_content = omit_hidden_message(replied_content, self.hide_flag)
-                  replied_content = replace_mention_id2name(replied_content, replied_message)
-                
-                  content = f"(in reply to {replied_author}: \"{replied_content}\")\n{content}"
-              except Exception as e:
-                  print(f"Failed to fetch replied message: {e}")
-                  content = f"(in reply to someone: \"\")\n{content}"
+                try:
+                    replied_message = await msg.channel.fetch_message(msg.reference.message_id)
+                    replied_author = f"**@{replied_message.author.display_name}**" if replied_message.author else "someone"
+                    replied_content = convert_nontext2str(replied_message)
+                    replied_content = omit_hidden_message(replied_content, self.hide_flag)
+                    replied_content = replace_mention_id2name(replied_content, replied_message)
+                    
+                    content = f"(in reply to {replied_author}: \"{replied_content}\")\n{content}"
+                except Exception as e:
+                    print(f"Failed to fetch replied message: {e}")
+                    content = f"(in reply to someone: \"\")\n{content}"
                         
             formatted_message = {
                 'metadata':[str(msg.author),msg.created_at.strftime('%y%m%d %H:%M %Z')],
@@ -160,6 +162,18 @@ class MyDiscordClient(discord.Client):
                 context.insert(0,formatted_message)
             else: # after=timestamp -> oldest_first=True -> append rear
                 context.append(formatted_message)
+
+        # TODO resolve unexpected error here: IndexError context[0]
+        # async for never looped? logically doesnt make sense (mention should have called this func)
+        # probably after is messed up.
+        # retry without after?
+        # I still have no idea how this happened, and I could not reproduce this error.
+        if len(context) == 0:
+            print(after)
+            if after is None:
+                assert(len(context) > 0)
+            else:
+                return await self.get_unstaged_history(channel,None,limit)
 
         # compress messages to reduce token
         compressed = [context[0]]
@@ -178,8 +192,7 @@ class MyDiscordClient(discord.Client):
 # --- message handling functions ---
 
 def convert_nontext2str(message:discord.Message)->str:
-    # TODO proper implement later
-    # also strip content from here
+    # TODO More sementic aware implemtation later
     parts = []
 
     # 1. Stickers
