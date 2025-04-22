@@ -220,12 +220,15 @@ def convert_nontext2str(message:discord.Message)->str:
             desc = getattr(embed, 'description', 'null')
             url = getattr(embed, 'url', 'null')
             
-
             # remove if url is already in content
             if url and message.content:
                 pattern = re.compile(fr"{url}\S*")
                 for substr in pattern.findall(message.content):
                     message.content = message.content.replace(substr,'')
+
+            # trim down unnecessarily long url to save token
+            if len(url) > 50:
+                url = url[:100]+'...'
 
             parts.append(f"[{label}: title-{title} desc-{desc} url-{url}]")
 
