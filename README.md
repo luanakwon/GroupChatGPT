@@ -3,6 +3,8 @@
 
 The goal of this project is to build an AI participant in a group chatroom. Like human user, this AI bot sits quietly in the chat, listens to the context, and give responds intelligently when mentioned.
 
+![Screenshot of GroupChatGPT in use](images/1.png)
+
 ## Table of Contents
 1. [Motivation](#motivation)
 2. [Features](#features)
@@ -26,9 +28,6 @@ It can also be a playful companion among friends — like the magic mirror in *S
 
 > *Basically, it is going to be like using ChatGPT with your friends.*
 
-(attach a screenshot of this bot in action in a discord room)
-
-
 ## Features
 - Connected to OpenAI GPT - 4.1
 - Listens and replies only when mentioned
@@ -43,10 +42,10 @@ It can also be a playful companion among friends — like the magic mirror in *S
 https://discord.com/oauth2/authorize?client_id=1358609232903274698
 
 2. To get response from **GroupChatGPT**, mention `@GroupChatGPT` (*other mentions like `@everyone`, `@here`, or `#channel` will not invoke response.*).  
-    [image]
+    ![example usecase of @GroupChatGPT](images/2.png)
 
-3. To hide a message or specific part of a message from **GroupChatGPT**, use `//pss` prefix.  
-    [image]
+3. To hide a message or following part within a message from **GroupChatGPT**, use `//pss` prefix.  
+    ![example usecase of //pss prefix](images/3.png)
 
 **\*Note\*** messages deleted or edited before mentioning `@GroupChatGPT` will not be seen to **GroupChatGPT**
 
