@@ -39,7 +39,7 @@ It can also be a playful companion among friends — like the magic mirror in *S
 ### 1) Using GroupChatGPT in your server
 
 1. Click the link below to install **GroupChatGPT** in your discord server
-https://discord.com/oauth2/authorize?client_id=1358609232903274698
+https://discord.com/oauth2/authorize?client_id=1358609232903274698&scope=bot&permisions=274877983744
 
 2. To get response from **GroupChatGPT**, mention `@GroupChatGPT` (*other mentions like `@everyone`, `@here`, or `#channel` will not invoke response.*).  
     ![example usecase of @GroupChatGPT](images/2.png)
