@@ -106,6 +106,8 @@ class MyDiscordClient(discord.Client):
                 # llm_answer = self.llm_rag.invoke(
                 # channel_id, recent_context
                 # )
+                # channel.send(...)
+                # delete self.db (not used)
                 llm_answer, llm_summary = self.llm.query_LLM(
                     summary = summary,
                     query=context)
