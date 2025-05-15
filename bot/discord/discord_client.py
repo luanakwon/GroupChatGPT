@@ -101,6 +101,11 @@ class MyDiscordClient(discord.Client):
                     limit=10
                 )
 
+
+                # TODO
+                # llm_answer = self.llm_rag.invoke(
+                # channel_id, recent_context
+                # )
                 llm_answer, llm_summary = self.llm.query_LLM(
                     summary = summary,
                     query=context)
@@ -157,7 +162,7 @@ class MyDiscordClient(discord.Client):
                     content = f"(in reply to someone: \"\")\n{content}"
                         
             formatted_message = {
-                'metadata':[str(msg.author),msg.created_at.strftime('%y%m%d %H:%M %Z')],
+                'metadata':[str(msg.author),msg.created_at],
                 'content':[str(content)]}
             if after is None: # after=None -> oldest_first=False -> append front
                 context.insert(0,formatted_message)
@@ -184,13 +189,15 @@ class MyDiscordClient(discord.Client):
             m0 = compressed[-1]
             # compress same author,short time window
             if m0['metadata'][0] == m1['metadata'][0]:
-                if m0['metadata'][1] == m1['metadata'][1]:
-                    m0['content'] += m1['content']
+                if m0['metadata'][1].strftime('%y%m%d %H:%M %Z') == m1['metadata'][1].strftime('%y%m%d %H:%M %Z'):
+                    m0['content'] += "\n" + m1['content']
                     continue
             compressed.append(m1)
 
-        return json.dumps(compressed)
-
+        # return json.dumps(compressed)
+        # changed from str to list[dict] return
+        # dict : {'metadata':[author(str),timestamp(datetime)],'content':content(str)}
+        return compressed     
 
 # --- message handling functions ---
 
