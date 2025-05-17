@@ -12,6 +12,9 @@ class MyOpenAIClient(OpenAI):
         self.set_username('ChatGPT')
         self._model = "gpt-4.1"
             
+
+    # TODO - modify system message
+    # no more summary, only answer is needed, now the model is provided retrieved context
     def set_username(self,username):
         self._username = username
         self._system_message_content = \
@@ -25,7 +28,14 @@ Always respond with a valid JSON object using double quotes. Do not add any comm
     def set_model(self,model):
         self._model = model
 
-    def query_LLM(self, summary, query):
+    # TODO - modify query
+    # def query(self, 
+    #           retreived_context:list[{'metadata':[author,datetime],'content':str}],
+    #           recent_context: list[{'metadata':[author,datetime],'content':str}]):
+    #   1. stringify both list
+    #   2. create llm response (with system message)
+    #   3. return answer only
+    def query(self, summary, query):
         user_message_content = f"###Previous Summary:\n\n{summary}\n###Recent Messages:\n\n{query}"
 
         try:
@@ -59,3 +69,11 @@ Always respond with a valid JSON object using double quotes. Do not add any comm
             raise ValueError(f"LLM returned malformed JSON: {llm_response}") from e
 
         return answer, summary 
+
+    def get_embedding(self, text):
+        response = self.embeddings.create(
+            model='text-embedding-3-small',
+            input=text,
+            encoding_format='float'
+        )
+        return response["data"][0]["embedding"]
