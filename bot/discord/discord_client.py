@@ -135,7 +135,7 @@ class MyDiscordClient(discord.Client):
         async for msg in channel.history(after=after, limit=limit):
             # if message is from self, meaning it is staged
             if msg.author == self.user:
-                # regard error message as regular message
+                # regard self-error message as regular message
                 if msg.content in self.reserved_error_message:
                     pass
                 elif after is None: # after=None -> oldest_first=False
@@ -201,6 +201,66 @@ class MyDiscordClient(discord.Client):
         # dict : {'metadata':[author(str),timestamp(datetime)],'content':content(str)}
         return compressed     
 
+    async def get_message(self, channel_id, timestamps):
+        out = []
+
+        # get channel from id
+        channel = self.get_channel(channel_id)
+        # sort timestamp
+        timestamps = iter(sorted(timestamps))
+        # use seconds isoformat to compare same-second messages
+        iso_tstamp = next(timestamps).isoformat(timespec='seconds')
+        # assert(len(timestamps) > 0)
+
+        # loop through message history after the first timestamp
+        msg: discord.Message
+        async for msg in channel.history(after=datetime.datetime.fromisoformat(iso_tstamp)):
+            t_msg = msg.created_at.isoformat(timespec='seconds')
+            
+            if t_msg < iso_tstamp:
+                # proceed to next in the history
+                continue
+            elif t_msg == iso_tstamp:
+                # retrieve message, proceed history
+                # process message (nontext, hidden, mention, reply)
+                content = convert_nontext2str(msg)
+                content = omit_hidden_message(content,self.hide_flag)
+                content = replace_mention_id2name(content,msg)
+                if msg.type == discord.MessageType.reply and msg.reference:
+                    try:
+                        replied_message = await msg.channel.fetch_message(msg.reference.message_id)
+                        replied_author = f"**@{replied_message.author.display_name}**" if replied_message.author else "someone"
+                        replied_content = convert_nontext2str(replied_message)
+                        replied_content = omit_hidden_message(replied_content, self.hide_flag)
+                        replied_content = replace_mention_id2name(replied_content, replied_message)
+                        
+                        content = f"(in reply to {replied_author}: \"{replied_content}\")\n{content}"
+                    except Exception as e:
+                        logger.error(f"Failed to fetch replied message: {e}")
+                        content = f"(in reply to someone: \"\")\n{content}"
+
+                formatted_message = {
+                'metadata':[str(msg.author),msg.created_at],
+                'content':[str(content)]}
+
+                out.append(formatted_message)
+            else:
+                # proceed to next timestamp in timestamps
+                iso_tstamp = next(timestamps).isoformat(timespec='seconds')
+
+        # compress messages to reduce token
+        compressed = [out[0]]
+        for m1 in out[1:]:
+            m0 = compressed[-1]
+            # compress same author,short time window
+            if m0['metadata'][0] == m1['metadata'][0]:
+                if m0['metadata'][1].strftime('%y%m%d %H:%M %Z') == m1['metadata'][1].strftime('%y%m%d %H:%M %Z'):
+                    m0['content'] += "\n" + m1['content']
+                    continue
+            compressed.append(m1)
+
+        return compressed
+    
 # --- message handling functions ---
 
 def convert_nontext2str(message:discord.Message)->str:
