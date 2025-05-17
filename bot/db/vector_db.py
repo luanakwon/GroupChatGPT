@@ -1,11 +1,11 @@
 import chromadb
 from chromadb.config import Settings
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
-from bot.config.credentials import OPENAI_API_KEY
+from bot.llm.llm_client import MyOpenAIClient
 
 import numpy as np
 import uuid
+from datetime import datetime
 
 
 # my Topic DB based on ChromaDB
@@ -21,21 +21,20 @@ class Topic_VDB:
         # period for Moving Average when combining embeddings
         self.MA_period = 10
 
-        self.embedding_func = OpenAIEmbeddingFunction(
-            api_key=OPENAI_API_KEY,
-            model_name='text-embedding-3-small'
-        )
-        self.LLMClient = None
+        self.LLMClient:MyOpenAIClient = None
 
     # push an array of data to the channel's collection
-    def push(self,channel_id,documents,metadatas):
+    def push(self,channel_id,documents,timestamps):
         # create/get collection (distance=cosine)
         collection = self.client.get_or_create_collection(
             name=f"discord_topics_{channel_id}",
+            embedding_function=self.LLMClient.get_embedding,
             configuration={'hnsw':{'space':'cosine'}}
         )
         # loop each document
-        for document, timestamp in zip(documents,metadatas):
+        document: str
+        timestamp: datetime
+        for document, timestamp in zip(documents,timestamps):
             # embed the document
             embedding = self.LLMClient.get_embedding(document)
             # query top k similar records
@@ -50,7 +49,7 @@ class Topic_VDB:
                 if result['distances'][i] < self.same_topic_threshold:
                     no_topics_match = False
                     # concat timestamp
-                    new_timestamps = result['metadatas'][i]['timestamps'] + ','+str(timestamp)
+                    new_timestamps = result['metadatas'][i]['timestamps'] + ','+ timestamp.isoformat(timespec='seconds')
                     # combine embedding (Moving average & norm)
                     new_embedding = (result['embeddings'][i] * self.MA_period + embedding)/(self.MA_period+1)
                     new_embedding /= np.linalg.norm(new_embedding) if sum(new_embedding) > 0 else 1
@@ -71,7 +70,7 @@ class Topic_VDB:
                     ids=[str(uuid.uuid4())],
                     documents=[''],
                     embeddings=[embedding],
-                    metadatas=[{'timestamps':str(timestamp)}],
+                    metadatas=[{'timestamps':timestamp.isoformat(timespec='seconds')}],
                 )
 
     def query(self, channel_id, query_texts, k):
@@ -84,53 +83,21 @@ class Topic_VDB:
         result = collection.query(
             query_texts=query_texts,
             n_results=k,
-            include=['metadatas']
+            include=['metadatas', 'distances']
         )
-        # convert string into list of time-strings
-        out_timestamps = [meta['timestamps'].split(',') for meta in result['metadatas']]
-        return out_timestamps
-    
-
-
-
-
-
-
-# # pseudo-code
-# class Topic_VectorStorage:
-#     ...
-#     # push to the storage
-#     def push(self, message, timestamp):
-#         # iterate through topics
-#         for record in self.topic_db:
-#             # get similarity score with the existing topic(record) 
-#             sim_score = similarity(
-#                 embedded(message),
-#                 record.embed
-#             )
-#             # if they are similar enough
-#             if sim_score > combine_threshold:
-#                 # append message to the topic (using timestamp)
-#                 record.timestamps.append(timestamp)
-#                 # update topic by moving average
-#                 record.embed = (record.embed*n + embedded(message))/(n+1)
         
-#         # no topics are similar enough
-#         if no_topics_match:
-#             # create new topic and store
-#             self.topic_db.append(
-#                 Record(
-#                     embedded(message),
-#                     timestamp
-#                 )
-#             )
+        # convert string into list of datetimes
+        out_timestamps = [
+            [datetime.fromisoformat(_t) for _t in meta['timestamps'].split(',')]
+            for i, meta in enumerate(result['metadatas']) 
+            if result['distances'][i] > self.same_topic_threshold
+        ]
+        out = []
+        for tlist in out_timestamps:
+            out += sorted(tlist,reverse=True)
 
-#     def top_k(self,message):
-#         top_k_records = get_similar_topics_record(message)
-#         timestamps = []
-#         for record in top_k_records:
-#             timestamps += record.timestamps
-#         return timestamps
+        # expected out structure: 1D list[datetime]
+        # |<- most important topic -> |<- second most important topic -> ...
+        # |- t0, t-1, t-2, ...(desc), | t0, t-1, t-2, ...(desc)...
+        return out
     
-
-        
