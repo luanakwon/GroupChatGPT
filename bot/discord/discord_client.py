@@ -3,37 +3,33 @@ logger = logging.getLogger(__name__)
 
 import discord
 
+from bot.db.channel_db import ChannelTimestampDB
 from bot.llm.llm_rag import LLM_RAG
 
-from simple_message import SimpleMessage
+from .simple_message import SimpleMessage
 
 import datetime
-import json
 import re
 
 class MyDiscordClient(discord.Client):
     def __init__(self):
+        # set intents
         intents = discord.Intents.default()
         intents.message_content = True  # to access message.content
-        intents.members = True # to access guild.fetch_members
         super().__init__(intents=intents)
 
         self.hide_flag = "//pss"
-
-        self.RAG:LLM_RAG = None 
-        # self.llm.set_model('gpt-4.1')
-
         self.reserved_error_message = [
             "Sorry, I'm not available right now.."
         ]
+
+        # timestamp per channel
+        self.TimestampDB:ChannelTimestampDB = ChannelTimestampDB()
+        # Module reference
+        self.RAG:LLM_RAG = None 
         
     async def on_ready(self):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        # self.member_dict = {}
-        # for guild in self.guilds:
-        #     async for member in guild.fetch_members(limit=None):  # fetch all
-        #         self.member_dict[member.id] = member.display_name
-
         self.RAG.LLMClient.set_username(str(self.user))
 
     async def on_message(self, message: discord.Message):
@@ -41,73 +37,21 @@ class MyDiscordClient(discord.Client):
         if message.author == self.user:
             return
         
-        # print('mentions')
-        # print(message.mentions)
-        # print('role_mentions')
-        # print(message.role_mentions)
-        # print('channel_mentions')
-        # print(message.channel_mentions)
-        # print('attachments')
-        # print(message.attachments)
-        # print('embeds')
-        # print(message.embeds)
-        # if len(message.embeds) > 0:
-        #     print(message.embeds[0].url)
-        #     print(message.embeds[0].description)
-        # print('reactions')
-        # print(message.reactions)
-        # print('nonce')
-        # print(message.nonce)
-        # print('pinned')
-        # print(message.pinned)
-        # print('type')
-        # print(message.type)
-        # print('flags')
-        # print(message.flags)
-        # print('reference')
-        # print(message.reference)
-        # print('thread')
-        # print(message.thread)
-        # print('components')
-        # print(message.components)
-        # print('stickers')
-        # print(message.stickers)
-        # print(message.content)
-
-        # return
-
         channel = message.channel
-        c_id = channel.id
 
         # 1. Handle messages that mention the bot
         if self.user in message.mentions:
-            db_row = self.db.get_memory(c_id)
-            if db_row is None:
-                timestamp = None
-                summary = ''
-            else:
-                timestamp = datetime.datetime.fromisoformat(db_row[0])
-                summary = db_row[1]
-
+            timestamp = self.TimestampDB.get_memory(channel.id)
+            if timestamp is not None:
+                timestamp = datetime.datetime.fromisoformat(timestamp)
             try:            
-                # summary = self.summarized_context.get(c_id, '')
                 context = await self.get_unstaged_history(
                     channel=channel, 
                     after=timestamp,
                     limit=10
                 )
 
-                # TODO
-                # llm_answer = self.llm_rag.invoke(
-                # channel_id, recent_context
-                # )
                 llm_answer = await self.RAG.invoke(channel.id, context)
-
-                # channel.send(...)
-                # delete self.db (not used)
-                # llm_answer, llm_summary = self.llm.query_LLM(
-                #     summary = summary,
-                #     query=context)
 
             except Exception as e:
                 logger.error(f"ERROR: {e}")
@@ -115,18 +59,18 @@ class MyDiscordClient(discord.Client):
                 return
 
             channel.send(llm_answer)
-            # self.db.set_memory(c_id,
-            #     datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            #     llm_summary)
-
-            # # self.last_staged[c_id] = datetime.datetime.now(datetime.timezone.utc)
-            # # self.summarized_context[c_id] = llm_summary
-
             logger.debug(llm_answer)
-
             return
+        
+    # method to set channel's timestamp for discord client.
+    # this is called after staged messages are embedded & stored.
+    def set_channel_timestamp(self, channel_id:int, timestamp:datetime.datetime):
+        self.TimestampDB.set_memory(
+            channel_id=channel_id,
+            timestamp=timestamp.isoformat())
 
-    async def get_unstaged_history(self, channel, after=None, limit=10):
+    async def get_unstaged_history(self, channel_id:int, after=None, limit=10):
+        channel = self.get_channel(channel_id)
         context = []
         msg: discord.Message
         async for msg in channel.history(after=after, limit=limit):
@@ -165,10 +109,7 @@ class MyDiscordClient(discord.Client):
                 created_at=msg.created_at,
                 content=str(content)
             )
-            
-            # {
-            #     'metadata':[str(msg.author),msg.created_at],
-            #     'content':[str(content)]}
+   
             if after is None: # after=None -> oldest_first=False -> append front
                 context.insert(0,formatted_message)
             else: # after=timestamp -> oldest_first=True -> append rear
@@ -196,12 +137,12 @@ class MyDiscordClient(discord.Client):
             m0 = compressed[-1]
             # compress same author,short time window
             if m0.author == m1.author:
-                if m0.created_at.strftime('%y%m%d %H:%M %Z') == m1.created_at.strftime('%y%m%d %H:%M %Z'):
+                if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
                     m0.content += "\n" + m1.content
                     continue
             compressed.append(m1)
 
-        # return list[SimpleMessage]
+        # returns list[SimpleMessage]
         return compressed     
 
     async def get_message(self, channel_id, timestamps):
@@ -264,7 +205,7 @@ class MyDiscordClient(discord.Client):
             m0 = compressed[-1]
             # compress same author,short time window
             if m0.author == m1.author:
-                if m0.created_at.strftime('%y%m%d %H:%M %Z') == m1.created_at.strftime('%y%m%d %H:%M %Z'):
+                if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
                     m0.content += "\n" + m1.content
                     continue
             compressed.append(m1)
