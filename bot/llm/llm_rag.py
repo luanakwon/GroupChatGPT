@@ -1,9 +1,13 @@
-import datetime
-from bot.db.vector_db import Topic_VDB
-from bot.discord.discord_client import MyDiscordClient
-from .llm_client import MyOpenAIClient
+from __future__ import annotations
+from typing import TYPE_CHECKING
 
-from bot.discord.simple_message import SimpleMessage
+import datetime
+
+if TYPE_CHECKING:
+    from bot.db.vector_db import Topic_VDB
+    from bot.discord.discord_client import MyDiscordClient
+    from .llm_client import MyOpenAIClient
+    from bot.discord.simple_message import SimpleMessage
 
 class LLM_RAG:
     def __init__(self, retrieval_limit):

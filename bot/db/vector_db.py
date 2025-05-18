@@ -1,11 +1,15 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 import chromadb
 from chromadb.config import Settings
-
-from bot.llm.llm_client import MyOpenAIClient
 
 import numpy as np
 import uuid
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from bot.llm.llm_client import MyOpenAIClient
 
 
 # my Topic DB based on ChromaDB

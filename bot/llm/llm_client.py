@@ -1,10 +1,14 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 import logging
 logger = logging.getLogger(__name__)
 
-from bot.discord.simple_message import SimpleMessage
-
 import openai
 from openai import OpenAI
+
+if TYPE_CHECKING:
+    from bot.discord.simple_message import SimpleMessage
 
 class MyOpenAIClient(OpenAI):
     def __init__(self,api_key):

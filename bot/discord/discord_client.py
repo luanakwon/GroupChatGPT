@@ -1,15 +1,17 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 import logging
 logger = logging.getLogger(__name__)
 
 import discord
-
-from bot.db.channel_db import ChannelTimestampDB
-from bot.llm.llm_rag import LLM_RAG
-
 from .simple_message import SimpleMessage
-
+from bot.db.channel_db import ChannelTimestampDB
 import datetime
 import re
+
+if TYPE_CHECKING:
+    from bot.llm.llm_rag import LLM_RAG
 
 class MyDiscordClient(discord.Client):
     def __init__(self):
