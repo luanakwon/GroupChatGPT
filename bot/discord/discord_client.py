@@ -3,9 +3,9 @@ logger = logging.getLogger(__name__)
 
 import discord
 
-from bot.config.credentials import OPENAI_API_KEY
-from bot.llm.llm_client import MyOpenAIClient
-from bot.db.channel_db import ChannelMemoryDB
+from bot.llm.llm_rag import LLM_RAG
+
+from simple_message import SimpleMessage
 
 import datetime
 import json
@@ -14,17 +14,14 @@ import re
 class MyDiscordClient(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True  # Needed to access message.content
-        intents.members = True # Needed to access guild.fetch_members
+        intents.message_content = True  # to access message.content
+        intents.members = True # to access guild.fetch_members
         super().__init__(intents=intents)
-        
-        # following 3 dicts can be switched to DB later
-        self.db = ChannelMemoryDB()
 
         self.hide_flag = "//pss"
 
-        self.llm = MyOpenAIClient(OPENAI_API_KEY)
-        self.llm.set_model('gpt-4.1')
+        self.RAG:LLM_RAG = None 
+        # self.llm.set_model('gpt-4.1')
 
         self.reserved_error_message = [
             "Sorry, I'm not available right now.."
@@ -37,8 +34,7 @@ class MyDiscordClient(discord.Client):
         #     async for member in guild.fetch_members(limit=None):  # fetch all
         #         self.member_dict[member.id] = member.display_name
 
-        self.llm.set_username(str(self.user))
-        
+        self.RAG.LLMClient.set_username(str(self.user))
 
     async def on_message(self, message: discord.Message):
         # skip self message
@@ -101,29 +97,30 @@ class MyDiscordClient(discord.Client):
                     limit=10
                 )
 
-
                 # TODO
                 # llm_answer = self.llm_rag.invoke(
                 # channel_id, recent_context
                 # )
+                llm_answer = await self.RAG.invoke(channel.id, context)
+
                 # channel.send(...)
                 # delete self.db (not used)
-                llm_answer, llm_summary = self.llm.query_LLM(
-                    summary = summary,
-                    query=context)
+                # llm_answer, llm_summary = self.llm.query_LLM(
+                #     summary = summary,
+                #     query=context)
 
             except Exception as e:
                 logger.error(f"ERROR: {e}")
                 await channel.send(self.reserved_error_message[0])
                 return
 
-            await channel.send(llm_answer)
-            self.db.set_memory(c_id,
-                datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                llm_summary)
+            channel.send(llm_answer)
+            # self.db.set_memory(c_id,
+            #     datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            #     llm_summary)
 
-            # self.last_staged[c_id] = datetime.datetime.now(datetime.timezone.utc)
-            # self.summarized_context[c_id] = llm_summary
+            # # self.last_staged[c_id] = datetime.datetime.now(datetime.timezone.utc)
+            # # self.summarized_context[c_id] = llm_summary
 
             logger.debug(llm_answer)
 
@@ -163,9 +160,15 @@ class MyDiscordClient(discord.Client):
                     logger.error(f"Failed to fetch replied message: {e}")
                     content = f"(in reply to someone: \"\")\n{content}"
                         
-            formatted_message = {
-                'metadata':[str(msg.author),msg.created_at],
-                'content':[str(content)]}
+            formatted_message = SimpleMessage(
+                author=str(msg.author),
+                created_at=msg.created_at,
+                content=str(content)
+            )
+            
+            # {
+            #     'metadata':[str(msg.author),msg.created_at],
+            #     'content':[str(content)]}
             if after is None: # after=None -> oldest_first=False -> append front
                 context.insert(0,formatted_message)
             else: # after=timestamp -> oldest_first=True -> append rear
@@ -187,18 +190,18 @@ class MyDiscordClient(discord.Client):
 
         # compress messages to reduce token
         compressed = [context[0]]
+        m0:SimpleMessage
+        m1:SimpleMessage
         for m1 in context[1:]:
             m0 = compressed[-1]
             # compress same author,short time window
-            if m0['metadata'][0] == m1['metadata'][0]:
-                if m0['metadata'][1].strftime('%y%m%d %H:%M %Z') == m1['metadata'][1].strftime('%y%m%d %H:%M %Z'):
-                    m0['content'] += "\n" + m1['content']
+            if m0.author == m1.author:
+                if m0.created_at.strftime('%y%m%d %H:%M %Z') == m1.created_at.strftime('%y%m%d %H:%M %Z'):
+                    m0.content += "\n" + m1.content
                     continue
             compressed.append(m1)
 
-        # return json.dumps(compressed)
-        # changed from str to list[dict] return
-        # dict : {'metadata':[author(str),timestamp(datetime)],'content':content(str)}
+        # return list[SimpleMessage]
         return compressed     
 
     async def get_message(self, channel_id, timestamps):
@@ -239,9 +242,14 @@ class MyDiscordClient(discord.Client):
                         logger.error(f"Failed to fetch replied message: {e}")
                         content = f"(in reply to someone: \"\")\n{content}"
 
-                formatted_message = {
-                'metadata':[str(msg.author),msg.created_at],
-                'content':[str(content)]}
+                formatted_message = SimpleMessage(
+                    author=str(msg.author),
+                    created_at=msg.created_at,
+                    content=str(content)
+                )
+                # {
+                # 'metadata':[str(msg.author),msg.created_at],
+                # 'content':[str(content)]}
 
                 out.append(formatted_message)
             else:
@@ -250,12 +258,14 @@ class MyDiscordClient(discord.Client):
 
         # compress messages to reduce token
         compressed = [out[0]]
+        m0:SimpleMessage
+        m1:SimpleMessage
         for m1 in out[1:]:
             m0 = compressed[-1]
             # compress same author,short time window
-            if m0['metadata'][0] == m1['metadata'][0]:
-                if m0['metadata'][1].strftime('%y%m%d %H:%M %Z') == m1['metadata'][1].strftime('%y%m%d %H:%M %Z'):
-                    m0['content'] += "\n" + m1['content']
+            if m0.author == m1.author:
+                if m0.created_at.strftime('%y%m%d %H:%M %Z') == m1.created_at.strftime('%y%m%d %H:%M %Z'):
+                    m0.content += "\n" + m1.content
                     continue
             compressed.append(m1)
 
