@@ -1,13 +1,15 @@
 import datetime
 from bot.db.vector_db import Topic_VDB
 from bot.discord.discord_client import MyDiscordClient
-from llm.llm_client import MyOpenAIClient
+from .llm_client import MyOpenAIClient
 
 from bot.discord.simple_message import SimpleMessage
 
 class LLM_RAG:
     def __init__(self, retrieval_limit):
         self.retrieval_limit = retrieval_limit
+
+        # Module reference 
         self.DB: Topic_VDB = None
         self.DiscordClient : MyDiscordClient = None
         self.LLMClient: MyOpenAIClient = None
@@ -39,7 +41,7 @@ class LLM_RAG:
             ret_context, recent_context
         )
         
-        # update DB
+        # update VDB & discord client's timestampDB
         self.update(channel_id, recent_context, llm_answer)
         return llm_answer
     
@@ -51,4 +53,6 @@ class LLM_RAG:
         timestamps = [r.created_at for r in recent_context]
         timestamps.append(datetime.datetime.now(datetime.timezone.utc))
 
+        self.DiscordClient.set_channel_timestamp(channel_id,timestamps[-1])
         self.DB.push(channel_id, documents, timestamps)
+        
