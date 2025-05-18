@@ -1,48 +1,48 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from bot.discord.simple_message import SimpleMessage
+
 import openai
 from openai import OpenAI
-
-import json
 
 class MyOpenAIClient(OpenAI):
     def __init__(self,api_key):
         super().__init__(api_key=api_key)
         self.set_username('ChatGPT')
         self._model = "gpt-4.1"
-            
 
-    # TODO - modify system message
     # no more summary, only answer is needed, now the model is provided retrieved context
     def set_username(self,username):
         self._username = username
         self._system_message_content = \
             f"""You, {self._username}, are a helpful and concise member of a Discord server. 
-You will be provided a summary of the previous context, followed by recent messages after the summarized context. 
-The last message mentions you. Please reply to the mention and also re-write the summary to include the old summary, given messages, and your reply.
-You must include include every context you have no matter how irrelevant they are.
-Respond in JSON format like this: {{"answer": "<your_reply>", "summary": "<updated_summary>"}}
-Always respond with a valid JSON object using double quotes. Do not add any commentary outside the JSON."""
+You will be provided a retrieved relative context, followed by some recent context as "retrieved-context", "recent-context", respectively.
+Retrieved-context is a list of related messages retrieved by RAG. Recent-context is a list of most recent messages.
+The last message mentions you. Please reply to the mention in plain text. Your entire response will be considered the reply to the mention."""
 
     def set_model(self,model):
         self._model = model
 
     # TODO - modify query
     # def query(self, 
-    #           retreived_context:list[{'metadata':[author,datetime],'content':str}],
-    #           recent_context: list[{'metadata':[author,datetime],'content':str}]):
-    #   1. stringify both list
-    #   2. create llm response (with system message)
-    #   3. return answer only
-    def query(self, summary, query):
-        user_message_content = f"###Previous Summary:\n\n{summary}\n###Recent Messages:\n\n{query}"
-
+    #           retreived_context:list[SimpleMessage}],
+    #           recent_context: list[SimpleMessage]):
+    def query(self,retreived_context, recent_context):
+        # stringify both list
+        ret_str = ""
+        msg:SimpleMessage
+        for msg in retreived_context:
+            ret_str += msg.toJSON() + "\n"
+        rec_str = ""
+        for msg in recent_context:
+            rec_str += msg.toJSON() + "\n"
+        # create llm response (with system message)
         try:
             llm_response = self.responses.create(
                 model=self._model,
                 instructions=self._system_message_content,
-                input=user_message_content
+                input=f"# retrieved-context\n{ret_str}\n# recent-context\n{rec_str}\n"
             )
             llm_response = llm_response.output_text
         except (
@@ -60,16 +60,10 @@ Always respond with a valid JSON object using double quotes. Do not add any comm
         except openai.RateLimitError as e:
             logger.error(f"Error: {e}")
             raise InterruptedError(e)
-
-        try:
-            llm_response = json.loads(llm_response)
-            answer = llm_response['answer']
-            summary = llm_response['summary']
-        except (json.JSONDecodeError, KeyError) as e:
-            raise ValueError(f"LLM returned malformed JSON: {llm_response}") from e
-
-        return answer, summary 
-
+        
+        # return answer
+        return llm_response
+    
     def get_embedding(self, text):
         response = self.embeddings.create(
             model='text-embedding-3-small',
