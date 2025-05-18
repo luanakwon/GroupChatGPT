@@ -20,7 +20,8 @@ class Topic_VDB:
         self.same_topic_threshold = 0.7
         # period for Moving Average when combining embeddings
         self.MA_period = 10
-
+        
+        # Module reference
         self.LLMClient:MyOpenAIClient = None
 
     # push an array of data to the channel's collection
