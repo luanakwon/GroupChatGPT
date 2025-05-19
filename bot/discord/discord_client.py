@@ -9,6 +9,7 @@ from .simple_message import SimpleMessage
 from bot.db.channel_db import ChannelTimestampDB
 import datetime
 import re
+import asyncio
 
 if TYPE_CHECKING:
     from bot.llm.llm_rag import LLM_RAG
@@ -48,19 +49,20 @@ class MyDiscordClient(discord.Client):
                 timestamp = datetime.datetime.fromisoformat(timestamp)
             try:            
                 context = await self.get_unstaged_history(
-                    channel=channel, 
+                    channel_id=channel.id, 
                     after=timestamp,
                     limit=10
                 )
 
-                llm_answer = await self.RAG.invoke(channel.id, context)
+                lri = self.RAG.invoke(channel.id, context)
+                llm_answer = await lri
 
             except Exception as e:
                 logger.error(f"ERROR: {e}")
                 await channel.send(self.reserved_error_message[0])
                 return
 
-            channel.send(llm_answer)
+            asyncio.create_task(channel.send(llm_answer))
             logger.debug(llm_answer)
             return
         

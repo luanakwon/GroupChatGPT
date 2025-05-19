@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import datetime
+import asyncio
 
 if TYPE_CHECKING:
     from bot.db.vector_db import Topic_VDB
@@ -41,12 +42,12 @@ class LLM_RAG:
             ret_context = []
 
         # query llm
-        llm_answer = await self.LLMClient.query(
+        llm_answer = self.LLMClient.query(
             ret_context, recent_context
         )
         
         # update VDB & discord client's timestampDB
-        self.update(channel_id, recent_context, llm_answer)
+        asyncio.create_task(self.update(channel_id, recent_context, llm_answer))
         return llm_answer
     
     # recent_context:List[SimpleMessage]
@@ -59,4 +60,3 @@ class LLM_RAG:
 
         self.DiscordClient.set_channel_timestamp(channel_id,timestamps[-1])
         self.DB.push(channel_id, documents, timestamps)
-        
