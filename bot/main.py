@@ -19,12 +19,12 @@ if __name__ == "__main__":
 
     # set reference attributes
     discordClient.RAG = RAG_module
-    topicVDB.LLMClient = openaiClient
+    topicVDB.set_llm_client(openaiClient)
     RAG_module.DB = topicVDB
     RAG_module.DiscordClient = discordClient
     RAG_module.LLMClient = openaiClient
     
     discordClient.run(DISCORD_TOKEN, log_handler=None)
-    
+
     
     

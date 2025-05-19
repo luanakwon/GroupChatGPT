@@ -14,7 +14,7 @@ class ChannelTimestampDB:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS channel_timestamp (
                     channel_id INTEGER PRIMARY KEY,
-                    timestamp TEXT,
+                    timestamp TEXT
                 )
             """)
             con.commit()
