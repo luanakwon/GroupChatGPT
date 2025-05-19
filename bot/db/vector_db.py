@@ -29,7 +29,7 @@ class Topic_VDB:
             settings=Settings(anonymized_telemetry=False)
         )
         # cosine similarity threshold - bigger than this thres == same topic
-        self.same_topic_threshold = 0.7
+        self.same_topic_threshold = 0.55
         # period for Moving Average when combining embeddings
         self.MA_period = 10
         
@@ -113,7 +113,7 @@ class Topic_VDB:
             out_timestamps = [
                 [datetime.fromisoformat(_t) for _t in meta['timestamps'].split(',')]
                 for i, meta in enumerate(result['metadatas'][0]) 
-                if result['distances'][0][i] > self.same_topic_threshold
+                if result['distances'][0][i] > self.same_topic_threshold*0.5
             ]
         except chromadb.errors.NotFoundError as e:
             out_timestamps = []
