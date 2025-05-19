@@ -68,10 +68,10 @@ The last message mentions you. Please reply to the mention in plain text. Your e
         # return answer
         return llm_response
     
-    def get_embedding(self, text):
+    def get_embedding(self, texts):
         response = self.embeddings.create(
             model='text-embedding-3-small',
-            input=text,
+            input=texts,
             encoding_format='float'
         )
-        return response["data"][0]["embedding"]
+        return [e.embedding for e in response.data]
