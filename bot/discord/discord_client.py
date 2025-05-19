@@ -46,12 +46,17 @@ class MyDiscordClient(discord.Client):
             timestamp = self.TimestampDB.get_memory(channel.id)
             if timestamp is not None:
                 timestamp = datetime.datetime.fromisoformat(timestamp)
+            
+            logger.debug(f"onMessage channel timestamp: {timestamp}")
+
             try:            
                 context = await self.get_unstaged_history(
                     channel_id=channel.id, 
                     after=timestamp,
-                    limit=10
+                    limit=100
                 )
+                
+                logger.debug(f"get_unstaged_history - len(context)={len(context)}")
 
                 llm_answer = await self.RAG.invoke(channel.id, context)
 
