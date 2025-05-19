@@ -9,7 +9,6 @@ from .simple_message import SimpleMessage
 from bot.db.channel_db import ChannelTimestampDB
 import datetime
 import re
-import asyncio
 
 if TYPE_CHECKING:
     from bot.llm.llm_rag import LLM_RAG
@@ -54,15 +53,14 @@ class MyDiscordClient(discord.Client):
                     limit=10
                 )
 
-                lri = self.RAG.invoke(channel.id, context)
-                llm_answer = await lri
+                llm_answer = await self.RAG.invoke(channel.id, context)
 
             except Exception as e:
                 logger.error(f"ERROR: {e}")
                 await channel.send(self.reserved_error_message[0])
                 return
 
-            asyncio.create_task(channel.send(llm_answer))
+            await channel.send(llm_answer)
             logger.debug(llm_answer)
             return
         
@@ -73,23 +71,25 @@ class MyDiscordClient(discord.Client):
             channel_id=channel_id,
             timestamp=timestamp.isoformat())
 
-    async def get_unstaged_history(self, channel_id:int, after=None, limit=10):
+    async def get_unstaged_history(self, channel_id:int, after=None, limit=100):
         channel = self.get_channel(channel_id)
         context = []
         msg: discord.Message
         async for msg in channel.history(after=after, limit=limit):
-            # if message is from self, meaning it is staged
-            if msg.author == self.user:
-                # regard self-error message as regular message
-                if msg.content in self.reserved_error_message:
-                    pass
-                elif after is None: # after=None -> oldest_first=False
-                    # this is the recent self message
-                    break
-                else: # after=timestamp -> oldest_first=True
-                    # this is the oldest self message
-                    context = []
-                    continue
+            # # if message is from self, meaning it is staged
+            # if msg.author == self.user:
+            #     # regard self-error message as regular message
+            #     if msg.content in self.reserved_error_message:
+            #         pass
+            #     elif after is None: # after=None -> oldest_first=False
+            #         # this is the recent self message
+            #         break
+            #     else: # after=timestamp -> oldest_first=True
+            #         # this is the oldest self message
+            #         context = []
+            #         continue
+
+            
 
             # process message (nontext, hidden, mention, reply)
             content = convert_nontext2str(msg)
