@@ -1,6 +1,9 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+import logging
+logger = logging.getLogger(__name__)
+
 import datetime
 
 if TYPE_CHECKING:
@@ -36,6 +39,8 @@ class LLM_RAG:
                 await self.update(channel_id, to_embed_context)
                 break
 
+        logger.debug(f"after embedding overflows -> len(recent_context)={len(recent_context)}")
+
         # # method 2 - limit by number of messages(short messages within one minute is collapsed into one)
         # # if recent context exceeds the limit, embed some
         # if len(recent_context) > self.recents_limit:
@@ -55,6 +60,8 @@ class LLM_RAG:
         # query db
         ret_context_timestamp = self.DB.query(channel_id, question, k=1)
 
+        logger.debug(f"len ret_context_timestamp = {len(ret_context_timestamp)}")
+
         # limit the size of retrieved context
         if len(ret_context_timestamp) > 0:
             if len(ret_context_timestamp) > self.retrieval_limit:
@@ -63,6 +70,8 @@ class LLM_RAG:
             ret_context = await self.DiscordClient.get_message(ret_context_timestamp)
         else:
             ret_context = []
+
+        logger.debug(f"len ret_context = {len(ret_context)}")
 
         # query llm
         llm_answer = self.LLMClient.query(

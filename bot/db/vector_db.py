@@ -1,6 +1,9 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+import logging
+logger = logging.getLogger(__name__)
+
 import chromadb
 from chromadb.config import Settings
 from chromadb import Documents, EmbeddingFunction, Embeddings
@@ -56,6 +59,9 @@ class Topic_VDB:
                 n_results=3,
                 include=['embeddings','metadatas','distances']
             )
+
+            logger.debug(f"from TopicDB.push/ d of similar records={result['distances'][0]}")
+
             no_topics_match = True
             for res_i, res_d, res_e, res_m in zip(
                     result['ids'][0],
@@ -63,7 +69,7 @@ class Topic_VDB:
                     result['embeddings'][0],
                     result['metadatas'][0]):
                 # if any of the record are similar enough, combine into the existing topic
-                print(res_d)
+                
                 if res_d > self.same_topic_threshold:
                     no_topics_match = False
                     # concat timestamp
@@ -77,7 +83,7 @@ class Topic_VDB:
                         embeddings=new_embedding,
                         metadatas={'timestamps':new_timestamps}
                     )
-                    print(f"\n\n\nupdated collection {document}\n\n\n")
+                    logger.debug(f"\n\n\nupdated collection {document}\n\n\n")
                 else:
                     # they are in distance-ascending order, 
                     # so escape once distance is too far
@@ -91,7 +97,7 @@ class Topic_VDB:
                     embeddings=[embedding],
                     metadatas=[{'timestamps':timestamp.isoformat(timespec='seconds')}],
                 )
-                print(f"\n\n\nadded to collection {document}\n\n\n")
+                logger.debug(f"\n\n\nadded to collection {document}\n\n\n")
 
     def query(self, channel_id, query_texts, k):
         try:
@@ -107,7 +113,8 @@ class Topic_VDB:
                 include=['metadatas', 'distances']
             )
             
-            print(result['distances'][0])
+            
+            logger.debug(f"from TopicDB.query/ d of similar records={result['distances'][0]}")
 
             # convert string into list of datetimes
             out_timestamps = [
