@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import datetime
-import asyncio
 
 if TYPE_CHECKING:
     from bot.db.vector_db import Topic_VDB
@@ -11,8 +10,12 @@ if TYPE_CHECKING:
     from bot.discord.simple_message import SimpleMessage
 
 class LLM_RAG:
-    def __init__(self, retrieval_limit):
-        self.retrieval_limit = retrieval_limit
+    def __init__(self, retrieval_limit, recents_limit):
+        self.retrieval_limit = retrieval_limit # max number of messages to be retrieved
+        self.recents_limit = recents_limit # max number of characters before embedding them
+
+        # time window (default 5min) to pick recent messages as a question for retrieval
+        self._context_query_window = datetime.timedelta(minutes=5)
 
         # Module reference 
         self.DB: Topic_VDB = None
@@ -20,12 +23,32 @@ class LLM_RAG:
         self.LLMClient: MyOpenAIClient = None
 
     async def invoke(self, channel_id, recent_context):
+        # method 1 - limit by number of charactors(approx) 
+        char_count = 0
+        half_idx = 0
+        for i, context in enumerate(recent_context):
+            char_count += len(context.content)
+            if char_count > self.recents_limit//2 and half_idx == 0:
+                half_idx = i
+            if char_count > self.recents_limit:
+                to_embed_context = recent_context[half_idx:]
+                recent_context = recent_context[:half_idx]
+                await self.update(channel_id, to_embed_context)
+                break
+
+        # # method 2 - limit by number of messages(short messages within one minute is collapsed into one)
+        # # if recent context exceeds the limit, embed some
+        # if len(recent_context) > self.recents_limit:
+        #     to_embed_context = recent_context[self.recents_limit//2:]
+        #     recent_context = recent_context[:self.recents_limit//2]
+        #     await self.update(channel_id,to_embed_context)
+
         # pick messages in recent 5 minutes as a question for retrieval
         question = []
         t1 = recent_context[-1].created_at
         context: SimpleMessage
         for context in reversed(recent_context):
-            if t1 - context.created_at < datetime.timedelta(minutes=5):
+            if t1 - context.created_at < self._context_query_window:
                 question.insert(0,context.content)
         question = "\n".join(question)
 
@@ -46,17 +69,12 @@ class LLM_RAG:
             ret_context, recent_context
         )
         
-        # update VDB & discord client's timestampDB
-        asyncio.create_task(self.update(channel_id, recent_context, llm_answer))
         return llm_answer
     
     # recent_context:List[SimpleMessage]
-    # llm_answer:str
-    async def update(self, channel_id, recent_context, llm_answer):
+    async def update(self, channel_id, recent_context):
         documents = [r.content for r in recent_context]
-        documents.append(llm_answer)
         timestamps = [r.created_at for r in recent_context]
-        timestamps.append(datetime.datetime.now(datetime.timezone.utc))
-
+        
         self.DiscordClient.set_channel_timestamp(channel_id,timestamps[-1])
         self.DB.push(channel_id, documents, timestamps)
