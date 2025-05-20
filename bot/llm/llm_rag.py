@@ -67,7 +67,7 @@ class LLM_RAG:
             if len(ret_context_timestamp) > self.retrieval_limit:
                 ret_context_timestamp = ret_context_timestamp[:self.retrieval_limit]
             # request actual messages that match the timestamp
-            ret_context = await self.DiscordClient.get_message(ret_context_timestamp)
+            ret_context = await self.DiscordClient.get_message(channel_id, ret_context_timestamp)
         else:
             ret_context = []
 
