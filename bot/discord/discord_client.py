@@ -139,23 +139,29 @@ class MyDiscordClient(discord.Client):
                 return await self.get_unstaged_history(channel,None,limit)
 
         # compress messages to reduce token
-        compressed = [context[0]]
-        m0:SimpleMessage
-        m1:SimpleMessage
-        for m1 in context[1:]:
-            m0 = compressed[-1]
-            # compress same author,short time window
-            if m0.author == m1.author:
-                if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
-                    m0.content += "\n" + m1.content
-                    continue
-            compressed.append(m1)
+        context = [m for m in context if len(m.content) > 0]
+        if len(context) > 0:
+            compressed = [context[0]]
+            m0:SimpleMessage
+            m1:SimpleMessage
+            for m1 in context[1:]:
+                m0 = compressed[-1]
+                # compress same author,short time window
+                if m0.author == m1.author:
+                    if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
+                        m0.content += "\n" + m1.content
+                        continue
+                compressed.append(m1)
 
-        # returns list[SimpleMessage]
-        return compressed     
+            # returns list[SimpleMessage]
+            return compressed
+        else:
+            return []     
 
     async def get_message(self, channel_id, timestamps):
         out = []
+        if len(timestamps) == 0:
+            return out
 
         # get channel from id
         channel = self.get_channel(channel_id)
@@ -204,22 +210,29 @@ class MyDiscordClient(discord.Client):
                 out.append(formatted_message)
             else:
                 # proceed to next timestamp in timestamps
-                iso_tstamp = next(timestamps).isoformat(timespec='seconds')
-
+                try:
+                    iso_tstamp = next(timestamps).isoformat(timespec='seconds')
+                except StopIteration:
+                    break
+                
         # compress messages to reduce token
-        compressed = [out[0]]
-        m0:SimpleMessage
-        m1:SimpleMessage
-        for m1 in out[1:]:
-            m0 = compressed[-1]
-            # compress same author,short time window
-            if m0.author == m1.author:
-                if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
-                    m0.content += "\n" + m1.content
-                    continue
-            compressed.append(m1)
+        out = [m for m in out if len(m.content) > 0]
+        if len(out) > 0:
+            compressed = [out[0]]
+            m0:SimpleMessage
+            m1:SimpleMessage
+            for m1 in out[1:]:
+                m0 = compressed[-1]
+                # compress same author,short time window
+                if m0.author == m1.author:
+                    if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
+                        m0.content += "\n" + m1.content
+                        continue
+                compressed.append(m1)
 
-        return compressed
+            return compressed
+        else:
+            return []
     
 # --- message handling functions ---
 
