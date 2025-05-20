@@ -31,8 +31,8 @@ class Topic_VDB:
             path=persist_directory,
             settings=Settings(anonymized_telemetry=False)
         )
-        # cosine similarity threshold - bigger than this thres == same topic
-        self.same_topic_threshold = 0.55
+        # cosine distance threshold - smaller than this thres == same topic
+        self.same_topic_threshold = 0.4
         # period for Moving Average when combining embeddings
         self.MA_period = 10
         
@@ -46,7 +46,7 @@ class Topic_VDB:
         collection = self.client.get_or_create_collection(
             name=f"discord_topics_{channel_id}",
             embedding_function=self.embedding_func,
-            configuration={'hnsw':{'space':'cosine'}}
+            configuration={'hnsw':{'space':'cosine'}} # it is not cosine similarity -> it is cosine distance (1-cos_sim)
         )
         # loop each document
         embeddings = self.embedding_func(documents)
@@ -70,7 +70,7 @@ class Topic_VDB:
                     result['metadatas'][0]):
                 # if any of the record are similar enough, combine into the existing topic
                 
-                if res_d > self.same_topic_threshold:
+                if res_d < self.same_topic_threshold:
                     no_topics_match = False
                     # concat timestamp
                     new_timestamps = res_m['timestamps'] + ','+ timestamp.isoformat(timespec='seconds')
@@ -120,7 +120,7 @@ class Topic_VDB:
             out_timestamps = [
                 [datetime.fromisoformat(_t) for _t in meta['timestamps'].split(',')]
                 for i, meta in enumerate(result['metadatas'][0]) 
-                if result['distances'][0][i] > self.same_topic_threshold*0.5
+                if result['distances'][0][i] < self.same_topic_threshold*2
             ]
         except chromadb.errors.NotFoundError as e:
             out_timestamps = []
