@@ -69,9 +69,13 @@ The last message mentions you. Please reply to the mention in plain text. Your e
         return llm_response
     
     def get_embedding(self, texts):
+        inputs = [txt for txt in texts if len(txt) > 0]
+        if len(texts) != len(inputs):
+            logger.warning(f"from get_embedding - unexpected empty string found in {texts}")
+
         response = self.embeddings.create(
             model='text-embedding-3-small',
-            input=texts,
+            input=inputs,
             encoding_format='float'
         )
         return [e.embedding for e in response.data]
