@@ -26,7 +26,7 @@ class LLM_RAG:
         self.LLMClient: MyOpenAIClient = None
 
     async def invoke(self, channel_id, recent_context):
-        # method 1 - limit by number of charactors(approx) 
+        # method 1 - limit by number of characters(approx) 
         char_count = 0
         half_idx = 0
         for i, context in enumerate(recent_context):
