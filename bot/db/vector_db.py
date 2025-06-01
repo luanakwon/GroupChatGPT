@@ -13,15 +13,24 @@ import numpy as np
 import uuid
 from datetime import datetime
 
+# update - Embedding for VDB will be done with local Qwen model
+from bot.llm.llm_local import EmbeddingLM
+
 if TYPE_CHECKING:
     from bot.llm.llm_client import MyOpenAIClient
-
 
 class MyEmbeddingFunction(EmbeddingFunction):
     def set_openai_client(self,LLMClient:MyOpenAIClient):
         self.LLMClient = LLMClient
     def __call__(self, texts: Documents) -> Embeddings:
         return self.LLMClient.get_embedding(texts)
+    
+# update - Embedding for VDB will be done with local Qwen model
+class ContextedEmbeddingFunction(EmbeddingFunction):
+    def init_embeddingLM(self,model_id='Qwen/Qwen2-0.5B'):
+        self.LM = EmbeddingLM(model_id)
+    def __call__(self, texts: Documents) -> Embeddings:
+        return self.LM.get_embedding(texts)
 
 # my Topic DB based on ChromaDB
 class Topic_VDB:
