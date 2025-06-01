@@ -53,7 +53,7 @@ class MyDiscordClient(discord.Client):
                 context = await self.get_unstaged_history(
                     channel_id=channel.id, 
                     after=timestamp,
-                    limit=100
+                    limit=500 # TODO this is where the limit is set. Where should I move this to?
                 )
                 
                 logger.debug(f"get_unstaged_history - len(context)={len(context)}")
