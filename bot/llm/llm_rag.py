@@ -62,7 +62,7 @@ class LLM_RAG:
 
         logger.debug(f"len ret_context_timestamp = {len(ret_context_timestamp)}")
 
-        # limit the size of retrieved context
+        # limit the size of retrieved context (truncate less relevant ones)
         if len(ret_context_timestamp) > 0:
             if len(ret_context_timestamp) > self.retrieval_limit:
                 ret_context_timestamp = ret_context_timestamp[:self.retrieval_limit]
@@ -82,6 +82,12 @@ class LLM_RAG:
     
     # recent_context:List[SimpleMessage]
     async def update(self, channel_id, recent_context):
+        # TODO - update logic
+        # documents - a batch of consecutive messages
+        # timestamp - t_first, t_last of batch
+        # discordClient.set_channel_timestamp(channel_id, timestamp):
+        #   set channel's recent timestamp to the last message's timestamp
+        #
         documents = [r.content for r in recent_context]
         timestamps = [r.created_at for r in recent_context]
         

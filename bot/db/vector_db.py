@@ -13,9 +13,6 @@ import numpy as np
 import uuid
 from datetime import datetime
 
-# update - Embedding for VDB will be done with local Qwen model
-from bot.llm.llm_local import EmbeddingLM
-
 if TYPE_CHECKING:
     from bot.llm.llm_client import MyOpenAIClient
 
@@ -24,13 +21,6 @@ class MyEmbeddingFunction(EmbeddingFunction):
         self.LLMClient = LLMClient
     def __call__(self, texts: Documents) -> Embeddings:
         return self.LLMClient.get_embedding(texts)
-    
-# update - Embedding for VDB will be done with local Qwen model
-class ContextedEmbeddingFunction(EmbeddingFunction):
-    def init_embeddingLM(self,model_id='Qwen/Qwen2-0.5B'):
-        self.LM = EmbeddingLM(model_id)
-    def __call__(self, texts: Documents) -> Embeddings:
-        return self.LM.get_embedding(texts)
 
 # my Topic DB based on ChromaDB
 class Topic_VDB:
@@ -81,6 +71,9 @@ class Topic_VDB:
                 
                 if res_d < self.same_topic_threshold:
                     no_topics_match = False
+                    # TODO - update logic
+                    # timestamp = (t_first_message, t_last_message)
+                    # concat - "{t_first}~{t_last}" (since '~' is not used in isoformat)
                     # concat timestamp
                     new_timestamps = res_m['timestamps'] + ','+ timestamp.isoformat(timespec='seconds')
                     # combine embedding (Moving average & norm)
@@ -100,6 +93,9 @@ class Topic_VDB:
 
             # if none of the record meet the threshold, create new topic
             if no_topics_match:
+                # TODO - update logic
+                # timestamp = (t_first_message, t_last_message)
+                # 'timestamps = "{t_first}~{t_last}" (since '~' is not used in isoformat)
                 collection.add(
                     ids=[str(uuid.uuid4())],
                     documents=[''],
@@ -125,6 +121,10 @@ class Topic_VDB:
             
             logger.debug(f"from TopicDB.query/ d of similar records={result['distances'][0]}")
 
+            # TODO - update logic
+            # out_timstamps
+            #   from List[List[datetime]] (out_tsps[kth_result][ith_message in topic])
+            #   to List[List[[t_from,t_to]]] 
             # convert string into list of datetimes
             out_timestamps = [
                 [datetime.fromisoformat(_t) for _t in meta['timestamps'].split(',')]
@@ -134,6 +134,14 @@ class Topic_VDB:
         except chromadb.errors.NotFoundError as e:
             out_timestamps = []
 
+        # TODO - update logic
+        # from
+        #   concat-ing sorted tlist
+        # to
+        #   concat-ing sorted tlist by t_from
+        #   expected out structure: 2D List[[t_first,t_last]]
+        #   |<- most important topic ->           |<- second most important topic -> ...
+        #   |- [tf0,tl0], [tf-1,tl-1], ...(desc), | [tf0,tl0], [tf-1,tl-1], ...(desc)...
         out = []
         for tlist in out_timestamps:
             out += sorted(tlist,reverse=True)

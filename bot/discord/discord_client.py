@@ -179,6 +179,11 @@ class MyDiscordClient(discord.Client):
             if t_msg < iso_tstamp:
                 # proceed to next in the history
                 continue
+            # TODO - update logic
+            # from 
+            #   retrieve if message minute match the timestamp
+            # to
+            #   retreive if message minute is in between [t_first, t_last]
             elif t_msg == iso_tstamp:
                 # retrieve message, proceed history
                 # process message (nontext, hidden, mention, reply)
