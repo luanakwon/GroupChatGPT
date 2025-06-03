@@ -15,7 +15,7 @@ if __name__ == "__main__":
     discordClient = MyDiscordClient()
     topicVDB = Topic_VDB(persist_directory='./VDB_persist')
     openaiClient = MyOpenAIClient(api_key = OPENAI_API_KEY)
-    RAG_module = LLM_RAG(retrieval_limit=50, recents_limit=5000)
+    RAG_module = LLM_RAG(retrieval_limit=50, recents_limit=10000)
 
     # set reference attributes
     discordClient.RAG = RAG_module
