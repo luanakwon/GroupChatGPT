@@ -14,7 +14,7 @@ class SimpleMessage:
     def toJSON(self):
         dict_obj = {
             'author':self.author,
-            'created_at':self.created_at.isoformat(timespec='seconds'),
+            'created_at':self.created_at.isoformat(timespec='minutes'),
             'content':self.content
         }
         return json.dumps(dict_obj)

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 import logging
 logger = logging.getLogger(__name__)
@@ -158,33 +158,47 @@ class MyDiscordClient(discord.Client):
         else:
             return []     
 
-    async def get_message(self, channel_id, timestamps):
+    async def get_message(self, channel_id:int, timestamps:List[List[datetime.datetime]]):
         out = []
         if len(timestamps) == 0:
             return out
+        
+        logger.debug(f"attempting to fetch message in between {min([_t for _t,_ in timestamps])}-{max([_t for _,_t in timestamps])}")
 
         # get channel from id
         channel = self.get_channel(channel_id)
-        # sort timestamp
-        timestamps = iter(sorted(timestamps))
+        # sort timestamp 
+        #   - the list is originally sorted only among the same topics, 
+        #     from Topic_VDB.query, recent->old
+        #   - here, it will be sorted across different topics,
+        #     old->recent
+        timestamps = iter(sorted(timestamps, key=lambda t:t[0]))
         # use seconds isoformat to compare same-second messages
-        iso_tstamp = next(timestamps).isoformat(timespec='seconds')
+        t_first, t_last = next(timestamps)
         # assert(len(timestamps) > 0)
 
         # loop through message history after the first timestamp
         msg: discord.Message
-        async for msg in channel.history(after=datetime.datetime.fromisoformat(iso_tstamp)):
-            t_msg = msg.created_at.isoformat(timespec='seconds')
+        async for msg in channel.history(after=t_first):
+            t_msg = msg.created_at
             
-            if t_msg < iso_tstamp:
+            # if t_message is past the timestamp window
+            # proceed to next timestamp in the timestamps
+            try:
+                while t_msg > t_last:
+                    t_first, t_last = next(timestamps)
+            except StopIteration:
+                break
+            
+            if t_msg < t_first:
                 # proceed to next in the history
                 continue
-            # TODO - update logic
+            # DONE TODO - update logic
             # from 
             #   retrieve if message minute match the timestamp
             # to
             #   retreive if message minute is in between [t_first, t_last]
-            elif t_msg == iso_tstamp:
+            elif t_msg >= t_first and t_msg <= t_last:
                 # retrieve message, proceed history
                 # process message (nontext, hidden, mention, reply)
                 content = convert_nontext2str(msg)
@@ -213,12 +227,6 @@ class MyDiscordClient(discord.Client):
                 # 'content':[str(content)]}
 
                 out.append(formatted_message)
-            else:
-                # proceed to next timestamp in timestamps
-                try:
-                    iso_tstamp = next(timestamps).isoformat(timespec='seconds')
-                except StopIteration:
-                    break
                 
         # compress messages to reduce token
         out = [m for m in out if len(m.content) > 0]

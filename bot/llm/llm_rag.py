@@ -1,16 +1,22 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 import logging
 logger = logging.getLogger(__name__)
 
 import datetime
+MINUTE = datetime.timedelta(minutes=1)
+
 
 if TYPE_CHECKING:
     from bot.db.vector_db import Topic_VDB
     from bot.discord.discord_client import MyDiscordClient
     from .llm_client import MyOpenAIClient
     from bot.discord.simple_message import SimpleMessage
+
+
+# TODO Debugging sucks, especially the RAG querying part. 
+# I can't tell out of what, what are retrieved, what are filtered and what are truncated. 
 
 class LLM_RAG:
     def __init__(self, retrieval_limit, recents_limit):
@@ -29,13 +35,14 @@ class LLM_RAG:
         # method 1 - limit by number of characters(approx) 
         char_count = 0
         half_idx = 0
-        for i, context in enumerate(recent_context):
+        for i, context in enumerate(reversed(recent_context)):
             char_count += len(context.content)
             if char_count > self.recents_limit//2 and half_idx == 0:
                 half_idx = i
             if char_count > self.recents_limit:
-                to_embed_context = recent_context[half_idx:]
-                recent_context = recent_context[:half_idx]
+                half_idx = len(recent_context) - half_idx
+                to_embed_context = recent_context[:half_idx]
+                recent_context = recent_context[half_idx:]
                 await self.update(channel_id, to_embed_context)
                 break
 
@@ -58,6 +65,7 @@ class LLM_RAG:
         question = "\n".join(question)
 
         # query db
+        # TODO properly set k (not 1. 1 is useless.)
         ret_context_timestamp = self.DB.query(channel_id, question, k=1)
 
         logger.debug(f"len ret_context_timestamp = {len(ret_context_timestamp)}")
@@ -81,15 +89,99 @@ class LLM_RAG:
         return llm_answer
     
     # recent_context:List[SimpleMessage]
-    async def update(self, channel_id, recent_context):
-        # TODO - update logic
+    async def update(self, channel_id, recent_context:List[SimpleMessage]):
+        # DONE TODO - update logic
         # documents - a batch of consecutive messages
         # timestamp - t_first, t_last of batch
         # discordClient.set_channel_timestamp(channel_id, timestamp):
         #   set channel's recent timestamp to the last message's timestamp
-        #
-        documents = [r.content for r in recent_context]
-        timestamps = [r.created_at for r in recent_context]
         
-        self.DiscordClient.set_channel_timestamp(channel_id,timestamps[-1])
+        batch_size = 2500 # max num of chars in batch TODO where should I assign this?
+        stride = 500 # approx num of chars that overlap in each batch
+        documents = []
+        timestamps = []
+
+        # No need to do anything if empty
+        if len(recent_context) == 0:
+            return
+
+
+        for ctx in recent_context:
+            if len(ctx.content) > batch_size:
+                batch_size = len(ctx.content)
+                logger.warning(f"batch size smaller than single message. It will be scaled up to fit the longest message({batch_size}).")
+                logger.debug(f"msglen > batchsize from {ctx.content[:20]}...")
+
+        # print(batch_size)
+
+
+        i = 0
+        b_count = 0
+        s_count = 0
+        docs = []
+
+        k = 0
+        while True:
+            k += 1
+            assert (k<2000)
+            
+            # end of list
+            if i >= len(recent_context):
+                if len(docs) > 0:
+                    documents.append('\n'.join(docs))
+                    timestamps.append([t_first,t_last+MINUTE])
+                break
+
+            # print(len(documents),i, b_count, s_count, len(recent_context[i].content))
+
+
+            ctx = recent_context[i]
+
+            # starting new docs batch
+            if s_count == 0:
+                # document this
+                docs.append(ctx.content)
+                b_count += len(ctx.content)
+                t_first = ctx.created_at
+                t_last = ctx.created_at
+                
+                # stride front
+                j = i-1
+                while j >= 0:
+                    ctx0 = recent_context[j]
+                    if (len(ctx0.content) + b_count <= batch_size and 
+                        len(ctx0.content) + s_count <= stride):
+
+                        docs.insert(0,ctx0.content)
+                        s_count += len(ctx0.content)
+                        b_count += len(ctx0.content)
+                        t_first = ctx0.created_at
+                        j -= 1
+
+                    else:
+                        # print(j)
+                        s_count += 1 # to indicate that stride_front is done
+                        break
+
+                i += 1
+         
+            # concat to existing docs batch
+            else:
+                if b_count + len(ctx.content) <= batch_size:
+                    docs.append(ctx.content)
+                    b_count += len(ctx.content)
+                    i += 1
+
+                # batch full, append and reset batch
+                else:
+                    documents.append('\n'.join(docs))
+                    timestamps.append([t_first,t_last+MINUTE])
+                    docs = []
+                    b_count = 0
+                    s_count = 0
+
+        # documents = [r.content for r in recent_context]
+        # timestamps = [r.created_at for r in recent_context]
+        
+        self.DiscordClient.set_channel_timestamp(channel_id,timestamps[-1][-1]-MINUTE)
         self.DB.push(channel_id, documents, timestamps)
