@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 import logging
 logger = logging.getLogger(__name__)
@@ -28,11 +28,9 @@ The last message mentions you. Please reply to the mention in plain text. Your e
     def set_model(self,model):
         self._model = model
 
-    # TODO - modify query
-    # def query(self, 
-    #           retreived_context:list[SimpleMessage}],
-    #           recent_context: list[SimpleMessage]):
-    def query(self,retreived_context, recent_context):
+    def query(self,
+              retreived_context: List[SimpleMessage], 
+              recent_context: List[SimpleMessage]):
         # stringify both list
         ret_str = ""
         msg:SimpleMessage

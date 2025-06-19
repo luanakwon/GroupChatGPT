@@ -13,6 +13,12 @@ import re
 if TYPE_CHECKING:
     from bot.llm.llm_rag import LLM_RAG
 
+
+# safety limit of messages when fetching chat history with get_unstaged_history()
+#   any messages exceeding this limit will never be updated to the DB
+#   to prevent, update DB before hitting this limit
+HISTORY_FETCH_SAFE_LIMIT = 500
+
 class MyDiscordClient(discord.Client):
     def __init__(self):
         # set intents
@@ -53,7 +59,7 @@ class MyDiscordClient(discord.Client):
                 context = await self.get_unstaged_history(
                     channel_id=channel.id, 
                     after=timestamp,
-                    limit=500 # TODO this is where the limit is set. Where should I move this to?
+                    limit=HISTORY_FETCH_SAFE_LIMIT
                 )
                 
                 logger.debug(f"get_unstaged_history - len(context)={len(context)}")
@@ -193,11 +199,8 @@ class MyDiscordClient(discord.Client):
             if t_msg < t_first:
                 # proceed to next in the history
                 continue
-            # DONE TODO - update logic
-            # from 
-            #   retrieve if message minute match the timestamp
-            # to
-            #   retreive if message minute is in between [t_first, t_last]
+            
+            # retreive if message minute is in between [t_first, t_last]
             elif t_msg >= t_first and t_msg <= t_last:
                 # retrieve message, proceed history
                 # process message (nontext, hidden, mention, reply)

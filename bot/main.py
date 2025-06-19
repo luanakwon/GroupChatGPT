@@ -13,7 +13,12 @@ if __name__ == "__main__":
 
     # instantiate clients
     discordClient = MyDiscordClient()
-    topicVDB = Topic_VDB(persist_directory='./VDB_persist')
+    topicVDB = Topic_VDB(
+        persist_directory='./VDB_persist',
+        topic_merge_threshold = 0.25,
+        topic_query_threshold = 0.8,
+        topic_CA_period = 10
+    )
     openaiClient = MyOpenAIClient(api_key = OPENAI_API_KEY)
     RAG_module = LLM_RAG(retrieval_limit=50, recents_limit=10000)
 

@@ -20,8 +20,12 @@ if TYPE_CHECKING:
 
 class LLM_RAG:
     def __init__(self, retrieval_limit, recents_limit):
-        self.retrieval_limit = retrieval_limit # max number of messages to be retrieved
-        self.recents_limit = recents_limit # max number of characters before embedding them
+        """
+        retrieval_limit: max number of messages to be retrieved
+        recents_limit: max number of characters before embedding them
+        """
+        self.retrieval_limit = retrieval_limit 
+        self.recents_limit = recents_limit 
 
         # time window (default 5min) to pick recent messages as a question for retrieval
         self._context_query_window = datetime.timedelta(minutes=5)
@@ -66,7 +70,7 @@ class LLM_RAG:
 
         # query db
         # TODO properly set k (not 1. 1 is useless.)
-        ret_context_timestamp = self.DB.query(channel_id, question, k=1)
+        ret_context_timestamp = self.DB.query(channel_id, question, k=3)
 
         logger.debug(f"len ret_context_timestamp = {len(ret_context_timestamp)}")
 
@@ -79,7 +83,7 @@ class LLM_RAG:
         else:
             ret_context = []
 
-        logger.debug(f"len ret_context = {len(ret_context)}")
+        logger.debug(f"Retrieval Done: ({len(ret_context)}|{len(recent_context)})")
 
         # query llm
         llm_answer = self.LLMClient.query(
@@ -90,21 +94,24 @@ class LLM_RAG:
     
     # recent_context:List[SimpleMessage]
     async def update(self, channel_id, recent_context:List[SimpleMessage]):
-        # DONE TODO - update logic
         # documents - a batch of consecutive messages
         # timestamp - t_first, t_last of batch
         # discordClient.set_channel_timestamp(channel_id, timestamp):
         #   set channel's recent timestamp to the last message's timestamp
         
-        batch_size = 2500 # max num of chars in batch TODO where should I assign this?
+        # max num of chars in batch 
+        # if this is smaller than the longest single message,
+        # it will be set to that length with warning.
+        # (in discord, max chars per message is 2K)
+        # TODO where should I assign this?
+        batch_size = 2500 
         stride = 500 # approx num of chars that overlap in each batch
-        documents = []
-        timestamps = []
+        documents:List[str] = []
+        timestamps:List[List[datetime.datetime,datetime.datetime]] = []
 
         # No need to do anything if empty
         if len(recent_context) == 0:
             return
-
 
         for ctx in recent_context:
             if len(ctx.content) > batch_size:
@@ -112,28 +119,19 @@ class LLM_RAG:
                 logger.warning(f"batch size smaller than single message. It will be scaled up to fit the longest message({batch_size}).")
                 logger.debug(f"msglen > batchsize from {ctx.content[:20]}...")
 
-        # print(batch_size)
-
-
+        
         i = 0
         b_count = 0
         s_count = 0
-        docs = []
+        docs:List[str] = []
 
-        k = 0
         while True:
-            k += 1
-            assert (k<2000)
-            
             # end of list
             if i >= len(recent_context):
                 if len(docs) > 0:
                     documents.append('\n'.join(docs))
                     timestamps.append([t_first,t_last+MINUTE])
                 break
-
-            # print(len(documents),i, b_count, s_count, len(recent_context[i].content))
-
 
             ctx = recent_context[i]
 
@@ -159,7 +157,6 @@ class LLM_RAG:
                         j -= 1
 
                     else:
-                        # print(j)
                         s_count += 1 # to indicate that stride_front is done
                         break
 
@@ -182,6 +179,17 @@ class LLM_RAG:
 
         # documents = [r.content for r in recent_context]
         # timestamps = [r.created_at for r in recent_context]
-        
-        self.DiscordClient.set_channel_timestamp(channel_id,timestamps[-1][-1]-MINUTE)
+
+        # TODO - think async situation
+        # push to db - not likely to happen at the same time, since messages has to stack up certain amount
+        #   even if it happens, it will only cost small increase in computation
+        #   since DB only stores timestamps, and actual messages will be fetched once from overlapping timestamps.
+        # query from db - might happen while db is being updated
+        #   in this case, about-to-be-updated messages are better to be included in the recent_messages
+        #   even if they are duplicated
+        #   rather than being omitted
+        # ==> So, update channel timestamp after the DB update is finished.
+
         self.DB.push(channel_id, documents, timestamps)
+        self.DiscordClient.set_channel_timestamp(channel_id,timestamps[-1][-1]-MINUTE)
+        

@@ -24,7 +24,11 @@ class MyEmbeddingFunction(EmbeddingFunction):
 
 # my Topic DB based on ChromaDB
 class Topic_VDB:
-    def __init__(self, persist_directory = "."):
+    def __init__(self, 
+                 persist_directory = ".",
+                 topic_merge_threshold=0.25,
+                 topic_query_threshold=0.5,
+                 topic_CA_period=10):
         # ChromaDB Client
         self.client = chromadb.PersistentClient(
             path=persist_directory,
@@ -32,11 +36,12 @@ class Topic_VDB:
         )
         # TODO properly set this value
         # cosine distance threshold
-        # when pushing, smaller than this thres == same topic
-        # when querying, smaller than this*2 == same topic
-        self.same_topic_threshold = 0.25
-        # period for Moving Average when combining embeddings
-        self.MA_period = 10
+        # when pushing, smaller than merge thres == same topic
+        # when querying, smaller than query thres == same topic
+        self.topic_merge_threshold = topic_merge_threshold
+        self.topic_query_threshold = topic_query_threshold
+        # period for Cumulative Average when combining embeddings
+        self.CA_period = topic_CA_period
         
     def set_llm_client(self, LLMClient):
         self.embedding_func = MyEmbeddingFunction()
@@ -65,8 +70,6 @@ class Topic_VDB:
                 include=['embeddings','metadatas','distances']
             )
 
-            logger.debug(f"from TopicDB.push/ d of similar records={result['distances'][0]}")
-
             no_topics_match = True
             for res_i, res_d, res_e, res_m in zip(
                     result['ids'][0],
@@ -75,16 +78,14 @@ class Topic_VDB:
                     result['metadatas'][0]):
                 # if any of the record are similar enough, combine into the existing topic
                 
-                if res_d < self.same_topic_threshold:
+                if res_d < self.topic_merge_threshold:
                     no_topics_match = False
-                    # TODO - update logic
-                    # timestamp = (t_first_message, t_last_message)
-                    # DONE concat - "{t_first}~{t_last}" (since '~' is not used in isoformat)
                     # concat timestamp
+                    # using - "{t_first}~{t_last}" (since '~' is not used in isoformat)
                     new_timestamps = res_m['timestamps'] + ','+ \
                         f"{t_first.isoformat(timespec='minutes')}~{t_last.isoformat(timespec='minutes')}"
-                    # combine embedding (Moving average & norm)
-                    new_embedding = (res_e * self.MA_period + embedding)/(self.MA_period+1)
+                    # combine embedding (Cumulative average & norm)
+                    new_embedding = (res_e * self.CA_period + embedding)/(self.CA_period+1)
                     new_embedding /= np.linalg.norm(new_embedding) if sum(new_embedding) > 0 else 1
                     # update collection
                     collection.update(
@@ -92,7 +93,8 @@ class Topic_VDB:
                         embeddings=new_embedding,
                         metadatas={'timestamps':new_timestamps}
                     )
-                    logger.debug(f"\n\n\nupdated collection {document}\n\n\n")
+                    # debug: updated topic
+                    logger.debug(f"Topic Updated: (\"{document[:50]}...\",d={res_d})")
                 else:
                     # they are in distance-ascending order, 
                     # so escape once distance is too far
@@ -100,9 +102,7 @@ class Topic_VDB:
 
             # if none of the record meet the threshold, create new topic
             if no_topics_match:
-                # DONE TODO - update logic
-                # timestamp = (t_first_message, t_last_message)
-                # 'timestamps = "{t_first}~{t_last}" (since '~' is not used in isoformat)
+                # add to collection
                 collection.add(
                     ids=[str(uuid.uuid4())],
                     documents=[''],
@@ -114,7 +114,14 @@ class Topic_VDB:
                         }
                     ]
                 )
-                logger.debug(f"\n\n\nadded to collection {document}\n\n\n")
+                # Debug: added new topic
+                distances = result['distances'][0]
+                logger.debug(f"New topic added: (\"{document[:50]}...\",min d={
+                    min(distances) if len(distances) > 0 else 'inf'
+                })")
+                
+        # DEBUG: # of topics
+        logger.debug(f"Collection Updated ({collection.count()} topics)")
 
     def query(self, channel_id, query_texts, k):
         try:
@@ -129,40 +136,35 @@ class Topic_VDB:
                 n_results=k,
                 include=['metadatas', 'distances']
             )
-            
-            
-            logger.debug(f"from TopicDB.query/ d of similar records={result['distances'][0]}")
 
-            # DONE TODO - update logic
-            # out_timstamps
-            #   from List[List[datetime]] (out_tsps[kth_result][ith_message in topic])
-            #   to List[List[[t_from,t_to]]] 
+            # out_timstamps: List[List[[t_from,t_to]]] 
             # convert string into list of datetimes
             out_timestamps = [
                 [
                     [datetime.fromisoformat(_t) for _t in _tftl.split('~')] 
                     for _tftl in meta['timestamps'].split(',')
                 ]
-                for i, meta in enumerate(result['metadatas'][0]) 
-                if result['distances'][0][i] < self.same_topic_threshold*2
+                for _k, meta in enumerate(result['metadatas'][0]) 
+                if result['distances'][0][_k] < self.topic_query_threshold*2
             ]
-        except chromadb.errors.NotFoundError as e:
+        except chromadb.errors.NotFoundError:
             out_timestamps = []
 
-        # DONE TODO - update logic
-        # from
-        #   concat-ing sorted tlist
-        # to
-        #   concat-ing sorted tlist by t_from
-        #   expected out structure: 2D List[[t_first,t_last]]
-        #   |<- most important topic ->           |<- second most important topic -> ...
-        #   |- [tf0,tl0], [tf-1,tl-1], ...(desc), | [tf0,tl0], [tf-1,tl-1], ...(desc)...
+        # concat-ing sorted tlist by t_from
+        # expected out structure: 2D List[[t_first,t_last]]
+        # |<- most important topic ->           |<- second most important topic -> ...
+        # |- [tf0,tl0], [tf-1,tl-1], ...(desc), | [tf0,tl0], [tf-1,tl-1], ...(desc)...
         out = []
         for tlist in out_timestamps:
             out += sorted(tlist, key=lambda t:t[0], reverse=True)
 
-        # expected out structure: 1D list[datetime]
-        # |<- most important topic -> |<- second most important topic -> ...
-        # |- t0, t-1, t-2, ...(desc), | t0, t-1, t-2, ...(desc)...
+        # debug query result
+        logger.debug(
+            f"QueryResult:\"{query_texts[:50]}...\"\n"+\
+            f"\td={result['distances'][0]}\n"+\
+            f"\ttimesteps_found={len(out)}"
+        )
+
+
         return out
     
