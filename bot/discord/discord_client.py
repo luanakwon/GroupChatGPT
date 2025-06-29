@@ -38,7 +38,7 @@ class MyDiscordClient(discord.Client):
         
     async def on_ready(self):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        self.RAG.LLMClient.set_username(str(self.user))
+        self.RAG.LLMClient.configure(str(self.user))
 
     async def on_message(self, message: discord.Message):
         # skip self message
