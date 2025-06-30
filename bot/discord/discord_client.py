@@ -114,11 +114,11 @@ class MyDiscordClient(discord.Client):
         else:
             return []    
 
-    async def fetch_messages_matching_keywords(self, channel_id:int, keywords:List[str], n:int=100):
+    async def fetch_messages_matching_keywords(self, channel_id:int, keywords:List[str], n:int):
         channel = self.get_channel(channel_id)
         messages = []
         msg: discord.Message
-        async for msg in channel.history(limit=n):
+        async for msg in channel.history(limit=HISTORY_FETCH_SAFE_LIMIT):
             # process message (nontext, hidden, mention, reply)
             content = convert_nontext2str(msg)
             content = omit_hidden_message(content,self.hide_flag)
@@ -146,42 +146,50 @@ class MyDiscordClient(discord.Client):
             #   less to compress
             #   only include strictly relevant messages
             # conclusion - lets go with compress->filter
+            # BUT, fetching to its limit every time would be inefficient
+            # so once a certain amount of relavant messages are found, stop fetching
             formatted_message = SimpleMessage(
                 author=str(msg.author),
                 created_at=msg.created_at,
                 content=str(content)
             )
+            # if it's the first message, insert
+            if len(messages) <= 0:
+                messages.insert(0,formatted_message)
+            else:
+                m0: SimpleMessage = messages[0]
+                # if it can be compressed, compress
+                if ( 
+                        m0.author == formatted_message.author
+                        and
+                        (
+                            m0.created_at.isoformat(timespec='minutes') 
+                            ==
+                            formatted_message.created_at.isoformat(timespec='minutes')
+                        )
+                    ):
+                    m0.content = formatted_message.content + '\n' + m0.content
+                # if not
+                else:
+                    # check relevance of the existing message
+                    is_relevant = False
+                    for kw in keywords:
+                        if kw in m0.content:
+                            is_relevant = True
+                            break
+                    # if it is relevant, keep it, and insert new
+                    if is_relevant:
+                        messages.insert(0,formatted_message)
+                    # if it is not relevant, pop it, and insert new
+                    else:
+                        messages[0] = formatted_message
 
-            messages.append(formatted_message)
-            
-        # reverse into oldest first
-        messages = messages[::-1]
-        # compress messages to reduce token
-        messages = [m for m in messages if len(m.content) > 0]
-        if len(messages) <= 0:
-            return []
-        else:
-            compressed = [messages[0]]
-            m0:SimpleMessage
-            m1:SimpleMessage
-            for m1 in messages[1:]:
-                m0 = compressed[-1]
-                # compress same author,short time window
-                if m0.author == m1.author:
-                    if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
-                        m0.content += "\n" + m1.content
-                        continue
-                compressed.append(m1)
-
-            compressed_filtered = []
-            m: SimpleMessage
-            for m in compressed:
-                for kw in keywords:
-                    if kw in m.content:
-                        compressed_filtered.append(m)
-                        break
-            return compressed_filtered
-
+                    # if number of relevant messages (excluding messages[0]) reaches n, return
+                    if len(messages)-1 >= n:
+                        return messages[1:]
+        # even if the number of relevant messages does not reach n, return except messages[0]
+        return messages[1:]
+                    
     # method to set channel's timestamp for discord client.
     # this is called after staged messages are embedded & stored.
     def set_channel_timestamp(self, channel_id:int, timestamp:datetime.datetime):
