@@ -45,36 +45,143 @@ class MyDiscordClient(discord.Client):
         if message.author == self.user:
             return
         
-        channel = message.channel
-
-        # 1. Handle messages that mention the bot
+        # start sequence only when mentioned
         if self.user in message.mentions:
-            timestamp = self.TimestampDB.get_memory(channel.id)
-            if timestamp is not None:
-                timestamp = datetime.datetime.fromisoformat(timestamp)
-            
-            logger.debug(f"onMessage channel timestamp: {timestamp}")
-
-            try:            
-                context = await self.get_unstaged_history(
-                    channel_id=channel.id, 
-                    after=timestamp,
-                    limit=HISTORY_FETCH_SAFE_LIMIT
-                )
-                
-                logger.debug(f"get_unstaged_history - len(context)={len(context)}")
-
-                llm_answer = await self.RAG.invoke(channel.id, context)
-
+            try:
+                async with message.channel.typing():
+                    recent_messages:List[SimpleMessage] = \
+                        await self.fetch_recent_messages(channel_id = message.channel.id, n = 10)
+                    llm_answer = await self.llm.invoke(recent_messages)
             except Exception as e:
                 logger.error(f"ERROR: {e}")
-                await channel.send(self.reserved_error_message[0])
+                await message.channel.send(self.reserved_error_message[0])
                 return
-
-            await channel.send(llm_answer)
+            
+            await message.channel.send(llm_answer)
             logger.debug(llm_answer)
             return
+
+    async def fetch_recent_messages(self, channel_id:int, n:int):
+        channel = self.get_channel(channel_id)
+        messages = []
+        msg: discord.Message
+        async for msg in channel.history(limit=n):
+            # process message (nontext, hidden, mention, reply)
+            content = convert_nontext2str(msg)
+            content = omit_hidden_message(content,self.hide_flag)
+            content = replace_mention_id2name(content,msg)
+            if msg.type == discord.MessageType.reply and msg.reference:
+                try:
+                    replied_message = await msg.channel.fetch_message(msg.reference.message_id)
+                    replied_author = f"**@{replied_message.author.display_name}**" if replied_message.author else "someone"
+                    replied_content = convert_nontext2str(replied_message)
+                    replied_content = omit_hidden_message(replied_content, self.hide_flag)
+                    replied_content = replace_mention_id2name(replied_content, replied_message)
+                    
+                    content = f"(in reply to {replied_author}: \"{replied_content}\")\n{content}"
+                except Exception as e:
+                    logger.error(f"Failed to fetch replied message: {e}")
+                    content = f"(in reply to someone: \"\")\n{content}"
+                        
+            formatted_message = SimpleMessage(
+                author=str(msg.author),
+                created_at=msg.created_at,
+                content=str(content)
+            )
+   
+            messages.append(formatted_message)
         
+        # reverse into oldest first
+        messages = messages[::-1]
+
+        # compress messages to reduce token
+        messages = [m for m in messages if len(m.content) > 0]
+        if len(messages) > 0:
+            compressed = [messages[0]]
+            m0:SimpleMessage
+            m1:SimpleMessage
+            for m1 in messages[1:]:
+                m0 = compressed[-1]
+                # compress same author,short time window
+                if m0.author == m1.author:
+                    if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
+                        m0.content += "\n" + m1.content
+                        continue
+                compressed.append(m1)
+
+            # returns list[SimpleMessage]
+            return compressed
+        else:
+            return []    
+
+    async def fetch_messages_matching_keywords(self, channel_id:int, keywords:List[str], n:int=100):
+        channel = self.get_channel(channel_id)
+        messages = []
+        msg: discord.Message
+        async for msg in channel.history(limit=n):
+            # process message (nontext, hidden, mention, reply)
+            content = convert_nontext2str(msg)
+            content = omit_hidden_message(content,self.hide_flag)
+            content = replace_mention_id2name(content,msg)
+            if msg.type == discord.MessageType.reply and msg.reference:
+                try:
+                    replied_message = await msg.channel.fetch_message(msg.reference.message_id)
+                    replied_author = f"**@{replied_message.author.display_name}**" if replied_message.author else "someone"
+                    replied_content = convert_nontext2str(replied_message)
+                    replied_content = omit_hidden_message(replied_content, self.hide_flag)
+                    replied_content = replace_mention_id2name(replied_content, replied_message)
+                    
+                    content = f"(in reply to {replied_author}: \"{replied_content}\")\n{content}"
+                except Exception as e:
+                    logger.error(f"Failed to fetch replied message: {e}")
+                    content = f"(in reply to someone: \"\")\n{content}"
+
+            # Simple keyword filter
+            # TODO - Think. compress->filter vs filter->compress
+            # compress->filter
+            #   likely to include short messages in between relevant messages
+            #   might result in more messages
+            #   more to compress
+            # filter->compress
+            #   less to compress
+            #   only include strictly relevant messages
+            # conclusion - lets go with compress->filter
+            formatted_message = SimpleMessage(
+                author=str(msg.author),
+                created_at=msg.created_at,
+                content=str(content)
+            )
+
+            messages.append(formatted_message)
+            
+        # reverse into oldest first
+        messages = messages[::-1]
+        # compress messages to reduce token
+        messages = [m for m in messages if len(m.content) > 0]
+        if len(messages) <= 0:
+            return []
+        else:
+            compressed = [messages[0]]
+            m0:SimpleMessage
+            m1:SimpleMessage
+            for m1 in messages[1:]:
+                m0 = compressed[-1]
+                # compress same author,short time window
+                if m0.author == m1.author:
+                    if m0.created_at.isoformat(timespec='minutes') == m1.created_at.isoformat(timespec='minutes'):
+                        m0.content += "\n" + m1.content
+                        continue
+                compressed.append(m1)
+
+            compressed_filtered = []
+            m: SimpleMessage
+            for m in compressed:
+                for kw in keywords:
+                    if kw in m.content:
+                        compressed_filtered.append(m)
+                        break
+            return compressed_filtered
+
     # method to set channel's timestamp for discord client.
     # this is called after staged messages are embedded & stored.
     def set_channel_timestamp(self, channel_id:int, timestamp:datetime.datetime):
