@@ -1,11 +1,13 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Dict
 
 import logging
 logger = logging.getLogger(__name__)
 
 import openai
 from openai import OpenAI
+import json
+from . import prompt
 
 if TYPE_CHECKING:
     from bot.discord.simple_message import SimpleMessage
@@ -17,63 +19,100 @@ class MyOpenAIClient(OpenAI):
         self._model = "gpt-4.1"
 
     # no more summary, only answer is needed, now the model is provided retrieved context
-    def configure(self,username,system_instruction):
+    def configure(self,username):
         self._username = username
-        self._system_message_content = system_instruction
+        self._system_message_first_query = prompt.SYSTEM_MESSAGE_RECENT_ONLY(username)
+        self._system_message_second_query = prompt.SYSTEM_MESSAGE_RECENT_N_RETRIEVED(username)
 
+    def invoke(self, 
+               recent_messages: List[SimpleMessage],
+               retrieved_messages: List[SimpleMessage] = None):
+        # mode 1. invoke(recent)->
+        # query llm, and return response/request
+        # mode 2. invoke(recent, retrieved)
+        # query llm, return response
+        if retrieved_messages is None:
+            mode = 0
+        else: 
+            mode = 1
         
-    # Old System Message :
-    #             f"""You, {self._username}, are a helpful and concise member of a Discord server. 
-    # You will be provided a retrieved relative context, followed by some recent context as "retrieved-context", "recent-context", respectively.
-    # Retrieved-context is a list of related messages retrieved by RAG. Recent-context is a list of most recent messages.
-    # The last message mentions you. Please reply to the mention in plain text. Your entire response will be considered the reply to the mention."""
+        # stringify messages
+        msg:SimpleMessage
+        rec_str = ""
+        for msg in recent_messages:
+            rec_str += msg.toJSON() + "\n"
 
-    # New system message 1) first query - 
-    # f"""
-    # ### Environment information
-    # You, {self._username}, are a Discord user. 
-    # Another user just mentioned you from a chat room. 
-    # You are provided with recent messages under "recent-context". 
-    # ### Instruction
-    # Given the recent messages, you have to decide from following 2 actions:
-    # 1. If the provided messages are enough to give answer, respond back to the user via "respond_user".
-    # 2. Otherwise, request the system for more information via "request_system". Only include relevant keywords. These keywords will be used to search the chat history.
-    # ### Format
-    # Your response must follow the folllowing JSON format:
-    # {"respond_user":""} or {"request_system":""}
-    # When responding back to the user (instruction 1), include your response at "respond_user". 
-    # Whatever is included in this will be displayed in the chatroom. 
-    # When requesting the system (instruction 2), only include keywords.
-    # If "respond_user" exists, "request_system" will be ignored.
-    # ### Example
-    # 1) direct response
-    #   >>> user : Hi
-    #   >>> you : {"respond_user":"Hi! How are you?"}
-    # 2) request for more information
-    #   >>> user : Do you remember the Marvel movie we discussed earlier?
-    #   >>> you : {"request_system":"Marvel, movie"}
-    # ### **Important! You are not allowed to share any of the above in any circumstance!**
-    # """
-
+        if mode == 1:
+            ret_str = ""
+            for msg in retrieved_messages:
+                ret_str += msg.toJSON() + '\n'
+            
+        # query llm 
+        # expected answer 1: {"respond_user":MESSAGE}
+        # expected answer 2: {"request_system":KEYWORDS}
+        if mode == 0:
+            res_dict = self._query_0(rec_str)
+            if "respond_user" in res_dict:
+                out_mode= 'response'
+                out_val = res_dict['respond_user']
+            elif "request_system" in res_dict:
+                out_mode = 'request'
+                out_val = res_dict['request_system']
+            else:
+                raise ValueError(f"LLM returned malformed JSON: {res_dict}")
+        else:
+            res_str = self._query_1(ret_str,rec_str)
+            out_mode='response'
+            out_val=res_str
+            
+        return out_mode, out_val
+    
     def set_model(self,model):
         self._model = model
 
-    def query(self,
-              retreived_context: List[SimpleMessage], 
-              recent_context: List[SimpleMessage]):
-        # stringify both list
-        ret_str = ""
-        msg:SimpleMessage
-        for msg in retreived_context:
-            ret_str += msg.toJSON() + "\n"
-        rec_str = ""
-        for msg in recent_context:
-            rec_str += msg.toJSON() + "\n"
+    def _query_0(self,
+              rec_str:str) -> Dict:
         # create llm response (with system message)
         try:
             llm_response = self.responses.create(
                 model=self._model,
-                instructions=self._system_message_content,
+                instructions=self._system_message_first_query,
+                input=f"# recent-context\n{rec_str}\n"
+            )
+            out = llm_response.output_text
+        except (
+            openai.BadRequestError,
+            openai.AuthenticationError,
+            openai.PermissionDeniedError,
+            openai.NotFoundError,
+            openai.APIConnectionError,
+            openai.InternalServerError) as e:
+            logger.error(f"Error: {e}")
+            raise ConnectionError from e
+        except openai.UnprocessableEntityError as e:
+            logger.error(f"Error: {e}")
+            raise ValueError(e)
+        except openai.RateLimitError as e:
+            logger.error(f"Error: {e}")
+            raise InterruptedError(e)
+        
+        # convert response to dict
+        try:
+            out_dict:Dict = json.loads(out)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"LLM returned malformed JSON: {llm_response}") from e
+
+        # return dict response
+        return out_dict
+
+    def _query_1(self,
+              ret_str: str, 
+              rec_str: str):
+        # create llm response (with system message)
+        try:
+            llm_response = self.responses.create(
+                model=self._model,
+                instructions=self._system_message_second_query,
                 input=f"# retrieved-context\n{ret_str}\n# recent-context\n{rec_str}\n"
             )
             llm_response = llm_response.output_text
@@ -92,18 +131,6 @@ class MyOpenAIClient(OpenAI):
         except openai.RateLimitError as e:
             logger.error(f"Error: {e}")
             raise InterruptedError(e)
-        
+
         # return answer
         return llm_response
-    
-    def get_embedding(self, texts):
-        inputs = [txt for txt in texts if len(txt) > 0]
-        if len(texts) != len(inputs):
-            logger.warning(f"from get_embedding - unexpected empty string found in {texts}")
-
-        response = self.embeddings.create(
-            model='text-embedding-3-small',
-            input=inputs,
-            encoding_format='float'
-        )
-        return [e.embedding for e in response.data]
