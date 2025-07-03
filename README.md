@@ -23,15 +23,15 @@ The goal of this project is to build an AI participant in a group chatroom. Like
 
 I've been working on several projects with ChatGPT, as if I was doing a team project with ChatGPT. But imagine working on a real team project: each teammate using their own ChatGPT would make it tedious to share context, update each other, and preserve creative ideas. 
 
-**GroupChatGPT** solves this by acting as a shared AI teammate within your Discord server. It listens to conversations (while respecting private cues), keeps context across threads and contributes when mentioned.  
+**GroupChatGPT** solves this by acting as a shared AI teammate within your Discord server. It listens to conversations (while respecting private cues) and contributes with context-aware responses when mentioned. 
 It can also be a playful companion among friends — like the magic mirror in *Snow White* — offering insights or facts mid-conversation.
 
 > *Basically, it is going to be like using ChatGPT with your friends.*
 
 ## Features
 - Connected to OpenAI GPT - 4.1
-- Listens and replies only when mentioned
-- Maintains conversation memory per channel
+- Listens to the mentions, read & replies only when mentioned
+- Provides context-aware responses via lexical RAG
 - Respects private messages with `//pss` prefix
 
 ## Usage

@@ -1,6 +1,6 @@
 # Terms of Service
 
-**Effective Date**: May-03-2025
+**Effective Date**: Jul-03-2025
 
 ### 1. Acceptance of Terms
 By using this bot("the Service"), you agree to these Terms of Service. If you do not agree, please refrain from interacting with this bot.
@@ -17,8 +17,7 @@ For full technical details, intended usage, adn setup instructions, see the [REA
 - We are not affiliated with OpenAI. All AI-generated content is subject to OpenAI's terms.
 
 ### 4. Data Use and Privacy
-We store minimal data—specifically, conversation summaries and timestamps—to improve user experience.  
-Full message content is not logged or stored except when temporarily accessed to generate responses during bot invocation.  
+We do not store any uswer message content or metadata beyond the scope of active request. Console logs containing truncated message previews are ephemeral and cleared with each server session restart. 
 For more details, please refer to our [Privacy Policy](PRIVACY.md).
 
 ### 5. Limitations of Liability
