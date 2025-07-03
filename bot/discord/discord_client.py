@@ -44,16 +44,24 @@ class MyDiscordClient(discord.Client):
         if self.user in message.mentions:
             try:
                 async with message.channel.typing():
+                    logger.debug("fetch recent messages start")
                     recent_messages:List[SimpleMessage] = \
                         await self.fetch_recent_messages(channel_id = message.channel.id, n = 10)
+                    logger.debug(f"fetched {len(recent_messages)} recent messages")
+                    logger.debug(f"query LLM - {recent_messages[0].content[:50]}...")
                     mode, val = self.llm.invoke(recent_messages)
                     if mode == 'response':
                         llm_answer = val
+                        logger.debug(f"LLM response - response, {llm_answer[:50]}") 
                     else: # mode == request
+                        logger.debug(f"LLM response - request, n keywords={len(val)}")
+                        logger.debug(f"fetch relevant messages start")
                         # TODO test and reset the value n
                         retrieved_messages:List[SimpleMessage] = \
                             await self.fetch_messages_matching_keywords(channel_id=message.channel.id, keywords=val, n=20)
+                        logger.debug(f"query LLM 2")
                         _, llm_answer = self.llm.invoke(recent_messages, retrieved_messages)
+                        logger.debug(f"LLM response 2 - response, {llm_answer[:50]}") 
             
             except Exception as e:
                 logger.error(f"ERROR: {e}")
@@ -61,7 +69,6 @@ class MyDiscordClient(discord.Client):
                 return
             
             await message.channel.send(llm_answer)
-            logger.debug(llm_answer)
             return
 
     async def fetch_recent_messages(self, channel_id:int, n:int):
@@ -118,6 +125,9 @@ class MyDiscordClient(discord.Client):
             return []    
 
     async def fetch_messages_matching_keywords(self, channel_id:int, keywords:List[str], n:int):
+        # counts for debugging purpose
+        c_msg_count = 0
+
         channel = self.get_channel(channel_id)
         messages = []
         msg: discord.Message
@@ -159,6 +169,7 @@ class MyDiscordClient(discord.Client):
             # if it's the first message, insert
             if len(messages) <= 0:
                 messages.insert(0,formatted_message)
+                c_msg_count += 1
             else:
                 m0: SimpleMessage = messages[0]
                 # if it can be compressed, compress
@@ -177,20 +188,24 @@ class MyDiscordClient(discord.Client):
                     # check relevance of the existing message
                     is_relevant = False
                     for kw in keywords:
-                        if kw in m0.content:
+                        if kw.lower() in m0.content.lower():
                             is_relevant = True
                             break
                     # if it is relevant, keep it, and insert new
                     if is_relevant:
                         messages.insert(0,formatted_message)
+                        c_msg_count += 1
                     # if it is not relevant, pop it, and insert new
                     else:
                         messages[0] = formatted_message
+                        c_msg_count += 1
 
                     # if number of relevant messages (excluding messages[0]) reaches n, return
                     if len(messages)-1 >= n:
+                        logger.debug(f"lexRAG - early break, retrieved {len(messages)-1}({(len(messages)-1)/c_msg_count*100:.1f}%), {formatted_message.created_at}")
                         return messages[1:]
         # even if the number of relevant messages does not reach n, return except messages[0]
+        logger.debug(f"lexRAG - limit break, {len(messages)-1}({(len(messages)-1)/c_msg_count*100:.1f}%), {formatted_message.created_at}")
         return messages[1:]
                     
 # --- message handling functions ---

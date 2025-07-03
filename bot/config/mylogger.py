@@ -31,6 +31,16 @@ LOGGING_CONFIG = {
             "level": "INFO",  # or DEBUG if you want everything
             "handlers": ["console", "file"],
             "propagate": False,
+        },
+        "openai":{
+            "level":"INFO",
+            "handlers":["console"],
+            "propagate": False,
+        },
+        "httpcore":{
+            "level":"INFO",
+            "handlers":["console"],
+            "propagate": False,
         }
     }
 }
