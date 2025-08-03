@@ -55,11 +55,11 @@ https://discord.com/oauth2/authorize?client_id=1358609232903274698&scope=bot&per
 Installation guide
 1. Clone this repo
     ```bash
-    ~$ git clone https://github.com/luanakwon/GroupChatGPT.git
+    git clone https://github.com/luanakwon/GroupChatGPT.git
     ```
 2. Install python3 and create virtual environment
     ```bash
-    ~$ sudo apt install python3 python3-pip
+    ~$ sudo apt install python3 python3-pip python3.12-venv
     ~$ cd GroupChatGPT
     ~/GroupChatGPT$ python3 -m venv .venv
     ```
