@@ -11,6 +11,7 @@ The goal of this project is to build an AI participant in a group chatroom. Like
 3. [Usage](#usage)
     1) [Using the Bot in Your Server](#1-using-groupchatgpt-in-your-server) 
     2) [Running Your Own Instance (for dev)](#2-running-your-own-instance-for-dev)
+4. [Repository Details (separate file)](repository_details.md)
 <!-- - Getting Started
 - Usage
 - Configuration
