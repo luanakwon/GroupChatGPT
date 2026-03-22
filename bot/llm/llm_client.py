@@ -7,7 +7,8 @@ logger = logging.getLogger(__name__)
 import openai
 from openai import OpenAI
 import json
-from . import prompt
+# from . import prompt
+from . import prompt_ed as prompt
 
 if TYPE_CHECKING:
     from bot.discord.simple_message import SimpleMessage
