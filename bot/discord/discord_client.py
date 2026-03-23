@@ -63,35 +63,39 @@ class MyDiscordClient(discord.Client):
                         _, llm_answer = self.llm.invoke(recent_messages, retrieved_messages)
                         logger.debug(f"LLM response 2 - response, {llm_answer[:50]}") 
             
+                # discord message is limited to 2000ch
+                # split send message
+                # TOOD move this part elsewhere
+                if len(llm_answer) >= 2000:
+                    # try splitting by \n
+                    llm_answers = []
+                    out = []
+                    c_count = 0
+                    lines = llm_answer.split('\n')
+                    for line in lines:
+                        c_count += len(line)
+                        if c_count > 2000:
+                            llm_answers.append('\n'.join(out))
+                            out = []
+                            c_count = len(line)
+                        out.append(line)
+
+                    if len(out) > 0:
+                        llm_answers.append('\n'.join(out))
+                
+                    logger.debug(f"split into messages of len {[len(a) for a in llm_answers]}")
+                    for answer in llm_answers:
+                        await message.channel.send(answer)
+
+                else:
+                    await message.channel.send(llm_answer)
+            
+                return
+            
             except Exception as e:
                 logger.error(f"ERROR: {e}")
                 await message.channel.send(self.reserved_error_message[0])
                 return
-            
-            # discord message is limited to 2000ch
-            # split send message
-            # TOOD move this part elsewhere
-            if llm_answer >= 2000:
-                # try splitting by \n
-                llm_answers = []
-                out = []
-                c_count = 0
-                lines = llm_answer.split('\n')
-                for line in lines:
-                    c_count += len(line)
-                    if c_count >= 2000:
-                        llm_answers.append('\n'.join(out))
-                        out = []
-                        c_count = len(line)
-                    out.append(line)
-                
-                async for answer in llm_answers:
-                    await message.channel.send(answer)
-
-            else:
-                await message.channel.send(llm_answer)
-                
-            return
 
     async def fetch_recent_messages(self, channel_id:int, n:int):
         channel = self.get_channel(channel_id)
